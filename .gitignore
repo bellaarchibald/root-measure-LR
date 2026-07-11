@@ -7,3 +7,4 @@ dist/
 .venv-win/
 *.app
 .DS_Store
+.claude/

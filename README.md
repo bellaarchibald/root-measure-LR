@@ -4,8 +4,6 @@ Desktop app for measuring root lengths from scanned agar plate images.
 
 Point-and-click each seedling on a scan, and Root Measure traces the root, measures its length in centimeters, and writes tidy CSV output ready for analysis. Supports batches of images, multi-plate scans, genotype/treatment labels, per-plate thresholds, and full session save/resume.
 
-![Root Measure](icon/icon.png)
-
 ## Features
 
 - Multi-plate scans: select plate corners on each image, then click roots one-by-one
