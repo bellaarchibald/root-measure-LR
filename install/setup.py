@@ -64,7 +64,7 @@ build_options = {
 }
 
 bdist_mac_options = {
-    "bundle_name": "Root Measure",
+    "bundle_name": "Root Measure LR",
     "iconfile": str(icon_dir / "icon.icns"),
     "codesign_identity": "-",
     "codesign_deep": True,
@@ -74,19 +74,19 @@ bdist_mac_options = {
 if sys.platform == "win32":
     # Windows: use Win32GUI base to hide console window
     exe_base = "Win32GUI"
-    target_name = "RootMeasure.exe"
+    target_name = "RootMeasureLR.exe"
     icon_file = str(icon_dir / "icon.ico")
 else:
     # macOS/Linux
     exe_base = "gui"
-    target_name = "RootMeasure"
+    target_name = "RootMeasureLR"
     icon_file = str(icon_dir / "icon.icns")
 
 setup(
-    name="RootMeasure",
+    name="RootMeasureLR",
     version="1.0.0",
-    description="Measure root lengths from scanned agar plate images",
-    author="Willian Viana",
+    description="Measure root lengths and count lateral roots from scanned agar plate images",
+    author="Willian Viana, Bella Archibald",
     options={
         "build_exe": build_options,
         "bdist_mac": bdist_mac_options,

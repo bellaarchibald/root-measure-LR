@@ -1,19 +1,19 @@
 #!/bin/bash
-# Root Measure — One-line installer
-# Usage: sudo curl -sL https://raw.githubusercontent.com/williangviana/root-measure/stable/install/install.sh | bash
+# Root Measure LR — One-line installer
+# Usage: sudo curl -sL https://raw.githubusercontent.com/bellaarchibald/root-measure-LR/stable/install/install.sh | bash
 
 set -e
 
-APP_NAME="Root Measure"
-REPO="williangviana/root-measure"
-WORK_DIR="$HOME/.root-measure-install"
+APP_NAME="Root Measure LR"
+REPO="bellaarchibald/root-measure-LR"
+WORK_DIR="$HOME/.root-measure-lr-install"
 
 # Show errors on failure
 trap 'echo ""; echo "ERROR: Installation failed at the step above."; echo "Please screenshot this output and send it for help."; exit 1' ERR
 
 echo ""
 echo "============================================"
-echo "  Root Measure — Installer"
+echo "  Root Measure LR — Installer"
 echo "============================================"
 echo ""
 
@@ -65,7 +65,7 @@ PY_VERSION=$($PY -c "import sys; print(f'{sys.version_info.major}.{sys.version_i
 echo "[1/7] Python $PY_VERSION ✓"
 
 # --- 2. Download project from GitHub ---
-echo "[2/7] Downloading Root Measure..."
+echo "[2/7] Downloading Root Measure LR..."
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 curl -sL "https://github.com/$REPO/archive/refs/heads/stable.tar.gz" | tar xz -C "$WORK_DIR" --strip-components=1
@@ -113,6 +113,6 @@ echo ""
 echo "============================================"
 echo "  Installation complete!"
 echo ""
-echo "  Open Root Measure from your"
+echo "  Open Root Measure LR from your"
 echo "  Applications folder or Launchpad."
 echo "============================================"
