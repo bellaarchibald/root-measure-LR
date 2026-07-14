@@ -587,15 +587,15 @@ class Sidebar(ctk.CTkScrollableFrame):
             state="disabled", fg_color=self._step_color_idle)
         self.btn_measure.pack(pady=3, padx=15, fill="x")
 
-        self.btn_count_lr = ctk.CTkButton(
-            b, text="Count Lateral Roots", command=app.start_count_lr,
-            state="disabled", fg_color=self._step_color_idle)
-        self.btn_count_lr.pack(pady=3, padx=15, fill="x")
-
         self.btn_review = ctk.CTkButton(
             b, text="3. Review Traces", command=app.show_review,
             state="disabled", fg_color=self._step_color_idle)
         self.btn_review.pack(pady=3, padx=15, fill="x")
+
+        self.btn_count_lr = ctk.CTkButton(
+            b, text="4. Count Lateral Roots", command=app.start_count_lr,
+            state="disabled", fg_color=self._step_color_idle)
+        self.btn_count_lr.pack(pady=3, padx=15, fill="x")
 
         # Review toggle buttons (hidden by default, shown in review mode)
         self._review_toggles_frame = ctk.CTkFrame(b, fg_color="transparent")
@@ -734,6 +734,11 @@ class Sidebar(ctk.CTkScrollableFrame):
 
     def _on_toggle_zoom(self):
         """Handle zoom toggle button click."""
+        if self.app.canvas._mode == self.app.canvas.MODE_COUNT_LR:
+            zoomed_to_plate = self.app.canvas.toggle_lr_zoom()
+            self.btn_toggle_zoom.configure(
+                text="Zoom to Root" if zoomed_to_plate else "Zoom to Plate")
+            return
         state = self.app.canvas.toggle_review_zoom()
         n = len(self.app.canvas._plates)
         # update plate info overlay to match zoomed plate

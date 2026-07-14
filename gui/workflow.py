@@ -266,8 +266,8 @@ class MeasurementMixin:
                 self._add_root_trace(i, res)
                 self._trace_to_result.append(i)
 
-        # count lateral roots, then enter review mode
-        self._start_count_lr()
+        # enter review mode; lateral root counting happens after review is accepted
+        self._show_review()
 
     def _start_count_lr(self):
         """Enter lateral-root counting mode, one root at a time."""
@@ -277,7 +277,7 @@ class MeasurementMixin:
                                  if r.get('path') is not None and r['path'].size > 0]
         self._lr_idx = 0
         if not self._lr_root_indices:
-            self._show_review()
+            self._finish_measurement()
             return
         self._enter_lr_root()
 
@@ -289,6 +289,8 @@ class MeasurementMixin:
         root_plates = self.canvas._root_plates
         pi = root_plates[ri] if ri < len(root_plates) else 0
         plate_binary = self._plate_binaries.get(pi, self._binary)
+        plates = self.canvas.get_plates()
+        plate_bounds = plates[pi] if pi < len(plates) else None
 
         prior = self.canvas._lr_results.get(ri)
         if prior is not None:
@@ -306,9 +308,19 @@ class MeasurementMixin:
             self.canvas._draw_lr_point(r, c, s, o)
         self.canvas.set_mode(ImageCanvas.MODE_COUNT_LR, on_done=self._lr_confirm_current)
 
-        plates = self.canvas.get_plates()
-        if pi < len(plates):
-            self.canvas.zoom_to_region(*plates[pi])
+        # zoom tight on this root (with lateral padding for wide lateral roots),
+        # not the whole plate, so branch points are easy to see and click
+        side_pad = int(1.5 * self._scale_val) if self._scale_val else 150
+        r1 = int(path[:, 0].min()) - 20
+        r2 = int(path[:, 0].max()) + 20
+        c1 = int(path[:, 1].min()) - side_pad
+        c2 = int(path[:, 1].max()) + side_pad
+        if plate_bounds is not None:
+            pr1, pr2, pc1, pc2 = plate_bounds
+            r1, r2 = max(r1, pr1), min(r2, pr2)
+            c1, c2 = max(c1, pc1), min(c2, pc2)
+        self.canvas.set_lr_zoom_targets((r1, r2, c1, c2), plate_bounds)
+
         self._show_lr_status()
         self._show_action_frame()
         n = len(self._lr_root_indices)
@@ -317,6 +329,15 @@ class MeasurementMixin:
             command=lambda: self.canvas._trigger_done(),
             text="Finish" if is_last else "Next Root")
         self.sidebar.btn_done.pack(pady=(5, 0), padx=15, fill="x")
+        if self._lr_idx > 0:
+            self.sidebar.btn_prev_plate.configure(
+                text="← Previous Root", command=self._lr_go_back)
+            if not self.sidebar.btn_prev_plate.winfo_ismapped():
+                self.sidebar.btn_prev_plate.pack(pady=(3, 0), padx=15, fill="x")
+        else:
+            self.sidebar.btn_prev_plate.pack_forget()
+        self.sidebar.show_review_toggles()
+        self.sidebar.btn_toggle_zoom.configure(text="Zoom to Plate")
 
     def _show_lr_status(self):
         """Show status for the root currently being reviewed for lateral roots."""
@@ -332,8 +353,8 @@ class MeasurementMixin:
             text="Click=add lateral root  |  Click marker=remove  |  "
                  "Right-click=undo  |  Enter=next root")
 
-    def _lr_confirm_current(self):
-        """Called when user presses Enter/Next Root during lateral root counting."""
+    def _lr_save_current(self):
+        """Persist the current root's lateral root points into results/canvas state."""
         ri = self._lr_root_indices[self._lr_idx]
         points = self.canvas.get_lr_points()
         left = sum(1 for p in points if p[2] == 'left')
@@ -345,13 +366,23 @@ class MeasurementMixin:
         res['lr_density'] = (left + right) / length_cm if length_cm else 0
         self.canvas._lr_results[ri] = {'left': left, 'right': right, 'points': list(points)}
 
+    def _lr_confirm_current(self):
+        """Called when user presses Enter/Next Root during lateral root counting."""
+        self._lr_save_current()
         if self._lr_idx < len(self._lr_root_indices) - 1:
             self._lr_idx += 1
             self._enter_lr_root()
         else:
             self.canvas.clear_lr_points()
             self._hide_action_buttons()
-            self._show_review()
+            self._finish_measurement()
+
+    def _lr_go_back(self):
+        """Go back to the previous root during lateral root counting."""
+        if self._lr_idx > 0:
+            self._lr_save_current()
+            self._lr_idx -= 1
+            self._enter_lr_root()
 
     def _show_review(self, skip_delay=False):
         """Show traced results and let user click bad traces to retry."""
@@ -457,10 +488,10 @@ class MeasurementMixin:
         selected = self.canvas.get_selected_for_retry()
         _log(f"  selected for retry: {selected}")
         if not selected:
-            # accept all — save and finish
-            _log("  no selection -> finishing measurement")
+            # accept all — count lateral roots, then save and finish
+            _log("  no selection -> counting lateral roots")
             self.canvas.set_mode(ImageCanvas.MODE_VIEW)
-            self._finish_measurement()
+            self._start_count_lr()
             return
         # map trace indices to result indices
         self._retry_result_indices = [self._trace_to_result[s]
@@ -468,9 +499,9 @@ class MeasurementMixin:
                                        if s < len(self._trace_to_result)]
         _log(f"  retry_result_indices: {self._retry_result_indices}")
         if not self._retry_result_indices:
-            _log("  no valid indices -> finishing measurement")
+            _log("  no valid indices -> counting lateral roots")
             self.canvas.set_mode(ImageCanvas.MODE_VIEW)
-            self._finish_measurement()
+            self._start_count_lr()
             return
         # enter reclick mode
         _log("  -> entering reclick mode")

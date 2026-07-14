@@ -96,6 +96,9 @@ class ImageCanvas(ctk.CTkFrame):
         self._lr_points = []       # list of (row, col, side, origin) for current root
         self._lr_marker_ids = []   # canvas ids of LR markers
         self._lr_classify_fn = None  # callback: (row, col) -> 'left'/'right'
+        self._lr_root_bounds = None   # (r1,r2,c1,c2) tight crop around current root
+        self._lr_plate_bounds = None  # (r1,r2,c1,c2) whole plate, for zoom-out toggle
+        self._lr_zoomed_to_plate = False
         self._lr_results = {}      # {root_index: {'left':n,'right':n,'points':[...]}}, persists across rebuilds
 
         # manual endpoints state (per-root top+bottom clicking)
@@ -254,6 +257,26 @@ class ImageCanvas(ctk.CTkFrame):
     def set_lr_context(self, classify_fn):
         """Set callback used to classify manually-added LR points: (row, col) -> side."""
         self._lr_classify_fn = classify_fn
+
+    def set_lr_zoom_targets(self, root_bounds, plate_bounds):
+        """Set zoom targets for the current root and zoom in tight on it.
+
+        root_bounds/plate_bounds: (r1, r2, c1, c2) or None.
+        """
+        self._lr_root_bounds = root_bounds
+        self._lr_plate_bounds = plate_bounds
+        self._lr_zoomed_to_plate = False
+        if root_bounds is not None:
+            self.zoom_to_region(*root_bounds, pad_frac=0.1)
+
+    def toggle_lr_zoom(self):
+        """Toggle between zoomed-to-root and zoomed-to-whole-plate. Returns new state."""
+        self._lr_zoomed_to_plate = not self._lr_zoomed_to_plate
+        if self._lr_zoomed_to_plate and self._lr_plate_bounds is not None:
+            self.zoom_to_region(*self._lr_plate_bounds)
+        elif self._lr_root_bounds is not None:
+            self.zoom_to_region(*self._lr_root_bounds, pad_frac=0.1)
+        return self._lr_zoomed_to_plate
 
     def seed_lr_points(self, auto_points):
         """Seed auto-detected LR points for the root currently being reviewed.
@@ -689,12 +712,14 @@ class ImageCanvas(ctk.CTkFrame):
         _show_traces = (self._review_traces_visible
                         or self._mode not in (self.MODE_REVIEW,
                                               self.MODE_RECLICK,
-                                              self.MODE_MANUAL_TRACE))
+                                              self.MODE_MANUAL_TRACE,
+                                              self.MODE_COUNT_LR))
         trace_plate_counters = {}
         for ti, (path, shades, mark_indices) in enumerate(self._traces):
             is_selected = ti in self._selected_for_retry
-            # When traces toggled off, only hide selected-for-retry traces
-            if not _show_traces and is_selected:
+            # When traces toggled off: hide selected-for-retry traces in review,
+            # or hide all traces in lateral-root counting (no retry selection there)
+            if not _show_traces and (is_selected or self._mode == self.MODE_COUNT_LR):
                 continue
             if len(path) < 2:
                 continue
