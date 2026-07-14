@@ -14,7 +14,7 @@ def _get_config_dir():
         base = Path(os.environ.get('LOCALAPPDATA', Path.home()))
     else:  # macOS/Linux
         base = Path.home()
-    config_dir = base / '.root_measure'
+    config_dir = base / '.root_measure_lr'
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
 
@@ -23,7 +23,9 @@ _LAST_FOLDER_FILE = _CONFIG_DIR / 'last_folder'
 _RECENT_FOLDERS_FILE = _CONFIG_DIR / 'recent_folders.json'
 
 # --- Output folder layout ---
-_ROOT = 'root_measure'
+# Distinct from the original Root Measure app's 'root_measure' folder so
+# running both apps on the same scan folder never collides or cross-writes.
+_ROOT = 'root_measure_lr'
 
 
 def _sanitize_name(name):
@@ -329,6 +331,10 @@ def _collect_canvas(canvas, plate_thresholds=None, sidebar=None):
     all_marks = {}
     for k, v in canvas._all_marks.items():
         all_marks[str(k)] = [list(m) for m in v]
+    lr_results = {}
+    for k, v in canvas._lr_results.items():
+        lr_results[str(k)] = {'left': v['left'], 'right': v['right'],
+                              'points': [list(p) for p in v.get('points', [])]}
     traces = []
     for path, shades, mark_indices in canvas._traces:
         # use tolist() for numpy arrays to get native Python types
@@ -347,6 +353,7 @@ def _collect_canvas(canvas, plate_thresholds=None, sidebar=None):
         'root_groups': list(canvas._root_groups),
         'root_plates': list(canvas._root_plates),
         'all_marks': all_marks,
+        'lr_results': lr_results,
         'mark_points': [list(p) for p in canvas._mark_points],
         'root_bottoms': {str(k): list(v) for k, v in canvas._root_bottoms.items()},
         'traces': traces,

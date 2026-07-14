@@ -587,6 +587,11 @@ class Sidebar(ctk.CTkScrollableFrame):
             state="disabled", fg_color=self._step_color_idle)
         self.btn_measure.pack(pady=3, padx=15, fill="x")
 
+        self.btn_count_lr = ctk.CTkButton(
+            b, text="Count Lateral Roots", command=app.start_count_lr,
+            state="disabled", fg_color=self._step_color_idle)
+        self.btn_count_lr.pack(pady=3, padx=15, fill="x")
+
         self.btn_review = ctk.CTkButton(
             b, text="3. Review Traces", command=app.show_review,
             state="disabled", fg_color=self._step_color_idle)
@@ -1445,6 +1450,7 @@ class Sidebar(ctk.CTkScrollableFrame):
             num_plates = 1
         self.btn_click_roots.configure(state="normal")
         self.btn_measure.configure(state="disabled")
+        self.btn_count_lr.configure(state="disabled")
         self.btn_review.configure(state="disabled")
         self.set_step(1)
         self.set_status("Ready. Click roots to begin.")

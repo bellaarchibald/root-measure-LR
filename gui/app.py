@@ -84,7 +84,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
 
     def __init__(self):
         super().__init__()
-        self.title("Root Measuring Tool v1.0")
+        self.title("Root Measure LR")
         self.geometry("1400x900")
         self.minsize(900, 600)
 
@@ -372,6 +372,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                         canvas_data.get('root_plates', []))
                 if canvas_data.get('all_marks'):
                     self.canvas.set_marks(canvas_data['all_marks'])
+                if canvas_data.get('lr_results'):
+                    self.canvas.set_lr_results(canvas_data['lr_results'])
                 if canvas_data.get('root_bottoms'):
                     self.canvas.set_root_bottoms(canvas_data['root_bottoms'])
                 if canvas_data.get('traces'):
@@ -464,6 +466,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                     self.sidebar.btn_select_plates.configure(state="normal")
                     self.sidebar.btn_click_roots.configure(state="normal")
                     self.sidebar.btn_measure.configure(state="normal")
+                    self.sidebar.btn_count_lr.configure(state="normal")
                     self.sidebar.btn_review.configure(state="normal")
                     self._hide_action_buttons()
                     self._show_action_frame()
@@ -850,6 +853,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         self.sidebar.btn_select_plates.configure(state="normal", fg_color="#2b5797")
         self.sidebar.btn_click_roots.configure(state="normal")
         self.sidebar.btn_measure.configure(state="normal")
+        self.sidebar.btn_count_lr.configure(state="normal")
         self.sidebar.btn_review.configure(state="normal")
         # Restore per-plate threshold UI if plates exist
         # Prefer per-image thresholds over global session thresholds
@@ -1272,6 +1276,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                 cd.get('root_plates', []))
         if cd.get('all_marks'):
             self.canvas.set_marks(cd['all_marks'])
+        if cd.get('lr_results'):
+            self.canvas.set_lr_results(cd['lr_results'])
         if cd.get('root_bottoms'):
             self.canvas.set_root_bottoms(cd['root_bottoms'])
         if cd.get('traces'):
@@ -1478,6 +1484,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                 self.canvas.clear_traces()
                 self.canvas.clear_roots()
                 self.canvas.clear_marks()
+                self.canvas.clear_lr_results()
                 self._restore_image_canvas(img_name)
 
                 # Use per-image labels if stored, otherwise keep current sidebar
@@ -1511,6 +1518,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
             self.canvas.clear_traces()
             self.canvas.clear_roots()
             self.canvas.clear_marks()
+            self.canvas.clear_lr_results()
             self._restore_image_canvas(orig_image_path.name)
         return recovered
 
@@ -1524,6 +1532,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         self.canvas.clear_plates()
         self.canvas.clear_roots()
         self.canvas.clear_marks()
+        self.canvas.clear_lr_results()
         self.canvas.clear_traces()
         self.canvas.clear_review()  # clear any review selection highlights
         self._clear_plate_info()
@@ -1555,6 +1564,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
 
         self.sidebar.btn_click_roots.configure(state="disabled")
         self.sidebar.btn_measure.configure(state="disabled")
+        self.sidebar.btn_count_lr.configure(state="disabled")
         self.sidebar.btn_review.configure(state="disabled")
         self._hide_action_buttons()
         self._show_action_frame()
@@ -1661,6 +1671,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         if not resume:
             self.canvas.clear_roots()
             self.canvas.clear_marks()
+            self.canvas.clear_lr_results()
             self.canvas.clear_traces()
             self.canvas.clear_review()  # clear any review selection highlights
             self._current_plate_idx = 0
@@ -1675,6 +1686,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
             for name in genotypes:
                 self._register_genotype(name)
         self.sidebar.btn_measure.configure(state="disabled")
+        self.sidebar.btn_count_lr.configure(state="disabled")
         self.sidebar.btn_review.configure(state="disabled")
         self._hide_action_buttons()
         self._show_action_frame()

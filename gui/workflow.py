@@ -15,7 +15,7 @@ def _log(msg):
     # On Windows Win32GUI builds, stdout goes to devnull — also write to log file
     if _sys.platform == 'win32':
         try:
-            log_path = _os.path.join(_os.path.expanduser('~'), '.root_measure', 'debug.log')
+            log_path = _os.path.join(_os.path.expanduser('~'), '.root_measure_lr', 'debug.log')
             with open(log_path, 'a') as f:
                 f.write(line + '\n')
         except Exception:
@@ -24,6 +24,7 @@ def _log(msg):
 from image_processing import preprocess
 from root_tracing import find_root_tip, trace_root, build_plate_graph
 from utils import _compute_segments, _find_nearest_path_index
+from lateral_roots import detect_lateral_roots, classify_side
 from csv_output import append_results_to_csv, save_metadata
 from plotting import plot_results, plot_segments_facet
 
@@ -145,6 +146,7 @@ class MeasurementMixin:
         self.sidebar.btn_measure.configure(state="disabled")
         self.sidebar.btn_select_plates.configure(state="disabled")
         self.sidebar.btn_click_roots.configure(state="disabled")
+        self.sidebar.btn_count_lr.configure(state="disabled")
         self.sidebar.btn_review.configure(state="disabled")
         self.sidebar.set_step(2)
         self.update()
@@ -264,8 +266,92 @@ class MeasurementMixin:
                 self._add_root_trace(i, res)
                 self._trace_to_result.append(i)
 
-        # enter review mode
-        self._show_review()
+        # count lateral roots, then enter review mode
+        self._start_count_lr()
+
+    def _start_count_lr(self):
+        """Enter lateral-root counting mode, one root at a time."""
+        _log("_start_count_lr() called")
+        self._hide_action_buttons()
+        self._lr_root_indices = [i for i, r in enumerate(self._results)
+                                 if r.get('path') is not None and r['path'].size > 0]
+        self._lr_idx = 0
+        if not self._lr_root_indices:
+            self._show_review()
+            return
+        self._enter_lr_root()
+
+    def _enter_lr_root(self):
+        """Zoom to and seed lateral-root review for the current root."""
+        ri = self._lr_root_indices[self._lr_idx]
+        res = self._results[ri]
+        path = res['path']
+        root_plates = self.canvas._root_plates
+        pi = root_plates[ri] if ri < len(root_plates) else 0
+        plate_binary = self._plate_binaries.get(pi, self._binary)
+
+        prior = self.canvas._lr_results.get(ri)
+        if prior is not None:
+            auto_points = [{'row': r, 'col': c, 'side': s}
+                           for (r, c, s, o) in prior['points'] if o == 'auto']
+            manual_points = [(r, c, s, o) for (r, c, s, o) in prior['points'] if o == 'manual']
+        else:
+            auto_points = detect_lateral_roots(plate_binary, path, self._scale_val)
+            manual_points = []
+
+        self.canvas.set_lr_context(lambda row, col, p=path: classify_side(p, (row, col)))
+        self.canvas.seed_lr_points(auto_points)
+        for (r, c, s, o) in manual_points:
+            self.canvas._lr_points.append((r, c, s, o))
+            self.canvas._draw_lr_point(r, c, s, o)
+        self.canvas.set_mode(ImageCanvas.MODE_COUNT_LR, on_done=self._lr_confirm_current)
+
+        plates = self.canvas.get_plates()
+        if pi < len(plates):
+            self.canvas.zoom_to_region(*plates[pi])
+        self._show_lr_status()
+        self._show_action_frame()
+        n = len(self._lr_root_indices)
+        is_last = self._lr_idx >= n - 1
+        self.sidebar.btn_done.configure(
+            command=lambda: self.canvas._trigger_done(),
+            text="Finish" if is_last else "Next Root")
+        self.sidebar.btn_done.pack(pady=(5, 0), padx=15, fill="x")
+
+    def _show_lr_status(self):
+        """Show status for the root currently being reviewed for lateral roots."""
+        n = len(self._lr_root_indices)
+        pos = self._lr_idx + 1
+        points = self.canvas.get_lr_points()
+        left = sum(1 for p in points if p[2] == 'left')
+        right = sum(1 for p in points if p[2] == 'right')
+        self.sidebar.set_status(
+            f"Count lateral roots {pos}/{n}: click to add, click a marker to remove.\n"
+            f"Left: {left}  Right: {right}  |  Press Enter when done.")
+        self.lbl_bottom.configure(
+            text="Click=add lateral root  |  Click marker=remove  |  "
+                 "Right-click=undo  |  Enter=next root")
+
+    def _lr_confirm_current(self):
+        """Called when user presses Enter/Next Root during lateral root counting."""
+        ri = self._lr_root_indices[self._lr_idx]
+        points = self.canvas.get_lr_points()
+        left = sum(1 for p in points if p[2] == 'left')
+        right = sum(1 for p in points if p[2] == 'right')
+        res = self._results[ri]
+        res['lr_left'] = left
+        res['lr_right'] = right
+        length_cm = res.get('length_cm') or 0
+        res['lr_density'] = (left + right) / length_cm if length_cm else 0
+        self.canvas._lr_results[ri] = {'left': left, 'right': right, 'points': list(points)}
+
+        if self._lr_idx < len(self._lr_root_indices) - 1:
+            self._lr_idx += 1
+            self._enter_lr_root()
+        else:
+            self.canvas.clear_lr_points()
+            self._hide_action_buttons()
+            self._show_review()
 
     def _show_review(self, skip_delay=False):
         """Show traced results and let user click bad traces to retry."""
@@ -277,6 +363,7 @@ class MeasurementMixin:
         self.sidebar.btn_select_plates.configure(state="normal")
         self.sidebar.btn_click_roots.configure(state="normal")
         self.sidebar.btn_measure.configure(state="normal")
+        self.sidebar.btn_count_lr.configure(state="normal")
         self.sidebar.btn_review.configure(state="normal")
         # sync trace-to-result mapping so canvas review numbering is correct
         self.canvas._trace_to_result = list(self._trace_to_result)
@@ -571,6 +658,8 @@ class MeasurementMixin:
             else:
                 res['segments'] = []
             self._results[ri] = res
+            # path changed — old lateral root points no longer align, clear them
+            self.canvas._lr_results.pop(ri, None)
         self._canvas_dirty = True  # retrace changed results — Next Image saves
 
         self._rebuild_all_traces()
@@ -691,6 +780,8 @@ class MeasurementMixin:
             path=path, method='manual', warning=None,
             segments=segments, mark_coords=mark_coords)
         self._results[ri] = res
+        # path changed — old lateral root points no longer align, clear them
+        self.canvas._lr_results.pop(ri, None)
         self._canvas_dirty = True  # manual trace changed results
 
         self._manual_trace_idx += 1
@@ -957,6 +1048,18 @@ class MeasurementMixin:
         mask = np.any(roi > 0, axis=2)
         img[dy:dy + ch, dx:dx + cw][mask] = roi[mask]
 
+    def start_count_lr(self):
+        """Re-enter lateral root counting from the sidebar button."""
+        if not hasattr(self, '_results') or not self._results:
+            if self.canvas._traces:
+                self._rebuild_results_from_traces()
+            else:
+                self.sidebar.set_status("No traces to count lateral roots on.")
+                return
+        self.canvas.clear_review()
+        self._hide_action_buttons()
+        self._start_count_lr()
+
     def show_review(self):
         """Re-enter review mode from the sidebar button."""
         if not hasattr(self, '_results') or not self._results:
@@ -1016,12 +1119,19 @@ class MeasurementMixin:
                     dx = float(path[-1, 1] - path[0, 1])
                     dy = -float(path[-1, 0] - path[0, 0])
                     direction = round(np.degrees(np.arctan2(dy, dx)) % 360, 1)
-                self._results.append(dict(
+                lr = self.canvas._lr_results.get(i)
+                res = dict(
                     length_cm=length_cm, length_px=length_px,
                     path=path, method='restored', warning=None,
                     segments=segments, mark_coords=mark_coords,
                     vector_length_cm=vector_length_cm,
-                    tortuosity=tortuosity, direction=direction))
+                    tortuosity=tortuosity, direction=direction)
+                if lr is not None:
+                    res['lr_left'] = lr['left']
+                    res['lr_right'] = lr['right']
+                    res['lr_density'] = ((lr['left'] + lr['right']) / length_cm
+                                         if length_cm else 0)
+                self._results.append(res)
                 self._trace_to_result.append(i)
                 trace_idx += 1
             else:
@@ -1080,6 +1190,7 @@ class MeasurementMixin:
         self.sidebar.btn_select_plates.configure(state="normal")
         self.sidebar.btn_click_roots.configure(state="normal")
         self.sidebar.btn_measure.configure(state="normal")
+        self.sidebar.btn_count_lr.configure(state="normal")
         self.sidebar.btn_review.configure(state="normal")
 
         if self.image_path:

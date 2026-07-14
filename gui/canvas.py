@@ -24,6 +24,11 @@ GROUP_MARK_COLORS = [
     "#F5C8B0", "#D8E0A0", "#F5F0C0", "#C0D4F0", "#F0B8C4",
     "#B8E8F5", "#D8A0C4", "#D8D8A0", "#B0C4E0", "#A8D8A8",
 ]
+# Lateral root marker colors: pale = auto-detected, bright = manually added
+_LR_COLORS = {
+    ('left', 'auto'): "#7ec8ff", ('left', 'manual'): "#1f78ff",
+    ('right', 'auto'): "#ffb0b0", ('right', 'manual'): "#e60000",
+}
 
 
 class ImageCanvas(ctk.CTkFrame):
@@ -37,6 +42,7 @@ class ImageCanvas(ctk.CTkFrame):
     MODE_REVIEW = "review"
     MODE_RECLICK = "reclick"
     MODE_MANUAL_TRACE = "manual_trace"
+    MODE_COUNT_LR = "count_lr"
 
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
@@ -85,6 +91,12 @@ class ImageCanvas(ctk.CTkFrame):
         self._marks_expected = 0   # how many marks expected (stops clicks beyond this)
         self._all_marks = {}       # {root_index: [(row,col), ...]} all collected marks
         self._marks_display_numbers = []  # display number per mark-group (root position)
+
+        # lateral root counting state (one root reviewed at a time)
+        self._lr_points = []       # list of (row, col, side, origin) for current root
+        self._lr_marker_ids = []   # canvas ids of LR markers
+        self._lr_classify_fn = None  # callback: (row, col) -> 'left'/'right'
+        self._lr_results = {}      # {root_index: {'left':n,'right':n,'points':[...]}}, persists across rebuilds
 
         # manual endpoints state (per-root top+bottom clicking)
         self._root_bottoms = {}    # {root_index: (row, col)} bottom click per root
@@ -239,6 +251,50 @@ class ImageCanvas(ctk.CTkFrame):
     def get_mark_points(self):
         return list(self._mark_points)
 
+    def set_lr_context(self, classify_fn):
+        """Set callback used to classify manually-added LR points: (row, col) -> side."""
+        self._lr_classify_fn = classify_fn
+
+    def seed_lr_points(self, auto_points):
+        """Seed auto-detected LR points for the root currently being reviewed.
+
+        auto_points: list of {'row', 'col', 'side'} dicts.
+        """
+        self.clear_lr_points()
+        for p in auto_points:
+            self._lr_points.append((p['row'], p['col'], p['side'], 'auto'))
+        self._redraw()
+
+    def clear_lr_points(self):
+        for rid in self._lr_marker_ids:
+            self.canvas.delete(rid)
+        self._lr_points.clear()
+        self._lr_marker_ids.clear()
+
+    def get_lr_points(self):
+        return list(self._lr_points)
+
+    def _draw_lr_point(self, row, col, side, origin):
+        cx, cy = self.image_to_canvas(col, row)
+        color = _LR_COLORS[(side, origin)]
+        r = 6
+        id1 = self.canvas.create_line(cx - r, cy - r, cx + r, cy + r,
+                                      fill=color, width=2)
+        id2 = self.canvas.create_line(cx - r, cy + r, cx + r, cy - r,
+                                      fill=color, width=2)
+        self._lr_marker_ids.extend([id1, id2])
+
+    def _find_nearest_lr_point(self, img_col, img_row, threshold=15):
+        """Find the index of the LR point nearest to an image coordinate."""
+        best_dist = threshold
+        best_idx = None
+        for i, (row, col, _side, _origin) in enumerate(self._lr_points):
+            d = ((row - img_row) ** 2 + (col - img_col) ** 2) ** 0.5
+            if d < best_dist:
+                best_dist = d
+                best_idx = i
+        return best_idx
+
     def set_plates(self, plates):
         """Restore plates from saved state."""
         self._plates = [tuple(p) for p in plates]
@@ -254,6 +310,18 @@ class ImageCanvas(ctk.CTkFrame):
         """Restore marks from saved state."""
         self._all_marks = {int(k): [tuple(m) for m in v]
                            for k, v in all_marks.items()}
+
+    def set_lr_results(self, lr_results):
+        """Restore per-root lateral root counts from saved state."""
+        self._lr_results = {int(k): {'left': v['left'], 'right': v['right'],
+                                     'points': [tuple(p) for p in v.get('points', [])]}
+                            for k, v in lr_results.items()}
+
+    def get_lr_results(self):
+        return dict(self._lr_results)
+
+    def clear_lr_results(self):
+        self._lr_results.clear()
 
     def get_root_bottoms(self):
         """Return dict of root_index -> (row, col) bottom points."""
@@ -612,6 +680,9 @@ class ImageCanvas(ctk.CTkFrame):
                         fill=color, anchor="w",
                         font=("Helvetica", 8, "bold"))
                     self._mark_marker_ids.extend([rid, tid])
+        if self._mode == self.MODE_COUNT_LR:
+            for (row, col, side, origin) in self._lr_points:
+                self._draw_lr_point(row, col, side, origin)
 
         # traced paths with segment coloring
         # In review mode, respect the traces visibility toggle
@@ -789,7 +860,7 @@ class ImageCanvas(ctk.CTkFrame):
         info = getattr(self, '_plate_info', None)
         if info and self._mode in (self.MODE_CLICK_ROOTS, self.MODE_CLICK_MARKS,
                                     self.MODE_REVIEW, self.MODE_RECLICK,
-                                    self.MODE_MANUAL_TRACE):
+                                    self.MODE_MANUAL_TRACE, self.MODE_COUNT_LR):
             cw = self.canvas.winfo_width()
             ch = self.canvas.winfo_height()
             _fnt = ("Helvetica", 16, "bold")
@@ -920,6 +991,12 @@ class ImageCanvas(ctk.CTkFrame):
                 ("Enter", "Confirm manual trace"),
                 ("Right-click", "Undo last point"),
             ],
+            self.MODE_COUNT_LR: [
+                ("Click", "Add lateral root (left/right auto-assigned)"),
+                ("Click marker", "Remove that lateral root"),
+                ("Enter", "Confirm and continue"),
+                ("Right-click", "Undo last added point"),
+            ],
         }
         _MODE_NAMES = {
             self.MODE_VIEW: "View",
@@ -929,6 +1006,7 @@ class ImageCanvas(ctk.CTkFrame):
             self.MODE_REVIEW: "Review",
             self.MODE_RECLICK: "Re-click",
             self.MODE_MANUAL_TRACE: "Manual Trace",
+            self.MODE_COUNT_LR: "Count Lateral Roots",
         }
 
         mode_shortcuts = _MODE_SHORTCUTS.get(self._mode, [])
@@ -1264,6 +1342,18 @@ class ImageCanvas(ctk.CTkFrame):
             self._mark_marker_ids.extend([rid, tid])
             if self._on_click_callback:
                 self._on_click_callback()
+        elif self._mode == self.MODE_COUNT_LR:
+            col, row = self.canvas_to_image(sx, sy)
+            idx = self._find_nearest_lr_point(col, row, threshold=15)
+            if idx is not None:
+                self._lr_points.pop(idx)
+                self._redraw()
+            elif self._lr_classify_fn is not None:
+                side = self._lr_classify_fn(row, col)
+                self._lr_points.append((row, col, side, 'manual'))
+                self._draw_lr_point(row, col, side, 'manual')
+            if self._on_click_callback:
+                self._on_click_callback()
         elif self._mode == self.MODE_REVIEW:
             col, row = self.canvas_to_image(sx, sy)
             threshold = 30 / self._scale if self._scale > 0 else 30
@@ -1510,6 +1600,15 @@ class ImageCanvas(ctk.CTkFrame):
             for _ in range(2):
                 if self._mark_marker_ids:
                     self.canvas.delete(self._mark_marker_ids.pop())
+            self._redraw()
+            if self._on_click_callback:
+                self._on_click_callback()
+            return True
+        elif self._mode == self.MODE_COUNT_LR and self._lr_points:
+            self._lr_points.pop()
+            for _ in range(2):
+                if self._lr_marker_ids:
+                    self.canvas.delete(self._lr_marker_ids.pop())
             self._redraw()
             if self._on_click_callback:
                 self._on_click_callback()

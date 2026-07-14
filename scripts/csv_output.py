@@ -32,6 +32,9 @@ def _build_rows(results, plate_labels, plate_offset, root_offset,
             'Tortuosity': round(r['tortuosity'], 3) if r.get('tortuosity') is not None else 'NA',
             'Direction': r.get('direction') if r.get('direction') is not None else 'NA',
             'Length_px': round(r['length_px'], 1) if r['length_px'] is not None else 'NA',
+            'LR_Left': r.get('lr_left') if r.get('lr_left') is not None else 'NA',
+            'LR_Right': r.get('lr_right') if r.get('lr_right') is not None else 'NA',
+            'LR_Density': round(r['lr_density'], 3) if r.get('lr_density') is not None else 'NA',
             'Warning': r.get('warning') or '',
         }
 
@@ -77,6 +80,7 @@ def _raw_col_order(is_factorial, num_marks):
     if num_marks > 0:
         for seg_i in range(num_marks + 1):
             cols.append(f'Segment_{seg_i + 1}_cm')
+    cols.extend(['LR_Left', 'LR_Right', 'LR_Density'])
     cols.extend(['Vector_cm', 'Tortuosity', 'Direction', 'Length_px', 'Warning'])
     return cols
 

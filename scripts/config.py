@@ -27,6 +27,10 @@ ROI_VERTICAL_CM = 10.6        # Max root length to search for tip (~10.6 cm, pla
 ROI_PAD_CM = 0.65             # Padding above/below click pair for tracing ROI
 MAX_CLICK_DISTANCE_CM = 0.65  # Max distance from click to nearest skeleton pixel
 
+# Lateral root detection
+LR_MIN_BRANCH_LEN_CM = 0.1    # Min branch stub length to count as a lateral root (filters noise)
+LR_MIN_SEPARATION_CM = 0.1    # Min spacing along primary path between distinct lateral roots
+
 
 def gaussian_sigma(scale, sensitivity='thick'):
     """Gaussian blur sigma controlled by sensitivity only (DPI-independent)."""
@@ -63,6 +67,16 @@ def roi_pad_px(scale):
 def max_click_distance_px(scale):
     """Max click-to-skeleton distance in pixels, computed from scale (px/cm)."""
     return int(MAX_CLICK_DISTANCE_CM * scale)
+
+
+def lr_min_branch_len_px(scale):
+    """Min lateral root branch length in pixels, computed from scale (px/cm)."""
+    return max(3, int(LR_MIN_BRANCH_LEN_CM * scale))
+
+
+def lr_min_separation_px(scale):
+    """Min spacing between distinct lateral roots in pixels, computed from scale (px/cm)."""
+    return max(3, int(LR_MIN_SEPARATION_CM * scale))
 
 
 # Wild-type genotype names (case-insensitive) — always plotted first (leftmost)
