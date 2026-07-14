@@ -1,4 +1,8 @@
-# Root Measure
+# Root Measure LR
+
+Based on Root Measure from Will in the Dinneny Lab
+
+Updated to include lateral root counting.
 
 Desktop app for measuring root lengths from scanned agar plate images.
 
