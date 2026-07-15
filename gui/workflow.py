@@ -314,6 +314,9 @@ class MeasurementMixin:
             self.canvas._lr_points.append((r, c, s, o))
             self.canvas._draw_lr_point(r, c, s, o)
         self.canvas.set_mode(ImageCanvas.MODE_COUNT_LR, on_done=self._lr_confirm_current)
+        # clear leftover review click-callback (would reset btn_done to "Accept All"
+        # on every add/remove click) — refresh the live count instead
+        self.canvas._on_click_callback = self._show_lr_status
 
         # zoom tight on this root (with lateral padding for wide lateral roots),
         # not the whole plate, so branch points are easy to see and click
@@ -356,7 +359,8 @@ class MeasurementMixin:
             f"Lateral roots: {total}  |  Press Enter when done.")
         self.lbl_bottom.configure(
             text="Click=add lateral root  |  Click marker=remove  |  "
-                 "Right-click=undo  |  Enter=next root")
+                 "Right-click=undo  |  Enter=next root  |  "
+                 "Scroll=zoom  |  Space+drag=pan")
 
     def _lr_save_current(self):
         """Persist the current root's lateral root points into results/canvas state."""
