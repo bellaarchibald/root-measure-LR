@@ -25,6 +25,7 @@ from image_processing import preprocess
 from root_tracing import find_root_tip, trace_root, build_plate_graph
 from utils import _compute_segments, _find_nearest_path_index
 from lateral_roots import detect_lateral_roots, classify_side
+from skimage.morphology import skeletonize
 from csv_output import append_results_to_csv, save_metadata
 from plotting import plot_results, plot_segments_facet
 
@@ -274,6 +275,7 @@ class MeasurementMixin:
         _log("_start_count_lr() called")
         self._hide_action_buttons()
         self.sidebar.set_step(4)
+        self._lr_skeletons = {}  # per-plate cache — skeletonizing is expensive
         self._lr_root_indices = [i for i, r in enumerate(self._results)
                                  if r.get('path') is not None and r['path'].size > 0]
         self._lr_idx = 0
@@ -305,7 +307,13 @@ class MeasurementMixin:
                            for (r, c, s, o) in prior['points'] if o == 'auto']
             manual_points = [(r, c, s, o) for (r, c, s, o) in prior['points'] if o == 'manual']
         else:
-            auto_points = detect_lateral_roots(plate_binary, path, self._scale_val)
+            if pi not in self._lr_skeletons:
+                self.sidebar.set_status(
+                    f"Preparing lateral root detection for plate {pi + 1}...")
+                self.update()
+                self._lr_skeletons[pi] = skeletonize(plate_binary)
+            auto_points = detect_lateral_roots(
+                plate_binary, path, self._scale_val, skeleton=self._lr_skeletons[pi])
             manual_points = []
 
         self.canvas.set_lr_context(lambda row, col, p=path: classify_side(p, (row, col)))

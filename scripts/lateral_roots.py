@@ -77,7 +77,7 @@ def _walk_branch(skeleton, path_mask, start, max_steps=2000):
     return length, tip
 
 
-def detect_lateral_roots(binary, path, scale=SCALE_PX_PER_CM):
+def detect_lateral_roots(binary, path, scale=SCALE_PX_PER_CM, skeleton=None):
     """Detect lateral root branch points off a traced primary root.
 
     Args:
@@ -86,6 +86,10 @@ def detect_lateral_roots(binary, path, scale=SCALE_PX_PER_CM):
         path: Nx2 array of (row, col) skeleton pixels for the primary
             root, ordered top to tip (as returned by trace_root).
         scale: pixels per cm.
+        skeleton: optional precomputed skeletonize(binary) result — pass
+            this in when calling repeatedly for multiple roots on the same
+            plate, since skeletonizing a full plate is expensive and the
+            result is identical for every root on that plate.
 
     Returns:
         list of {'row', 'col', 'side'} dicts, ordered top to tip.
@@ -94,7 +98,8 @@ def detect_lateral_roots(binary, path, scale=SCALE_PX_PER_CM):
     if path.size == 0:
         return []
 
-    skeleton = skeletonize(binary)
+    if skeleton is None:
+        skeleton = skeletonize(binary)
     h, w = skeleton.shape
 
     in_bounds = ((path[:, 0] >= 0) & (path[:, 0] < h) &

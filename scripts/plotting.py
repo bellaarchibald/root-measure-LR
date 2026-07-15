@@ -574,7 +574,8 @@ def plot_results(csv_path, value_col=None, ylabel=None, csv_format='R',
                            zorder=3, edgecolors='none')
 
         ax.set_xticks([ci * cond_spacing for ci in range(n_cond)])
-        ax.set_xticklabels(conditions, fontsize=12)
+        ax.set_xticklabels(conditions, fontsize=12, rotation=45, ha='right',
+                           rotation_mode='anchor')
         # tighten x-axis around actual box positions
         all_pos = list(positions_map.values())
         if all_pos:
@@ -605,7 +606,8 @@ def plot_results(csv_path, value_col=None, ylabel=None, csv_format='R',
                        zorder=3, edgecolors='none')
 
         ax.set_xticks(range(len(genotypes)))
-        ax.set_xticklabels(genotypes, fontsize=12)
+        ax.set_xticklabels(genotypes, fontsize=12, rotation=45, ha='right',
+                           rotation_mode='anchor')
 
     ax.set_ylabel(ylabel, fontsize=14)
     ax.set_ylim(bottom=0)
@@ -624,7 +626,9 @@ def plot_results(csv_path, value_col=None, ylabel=None, csv_format='R',
     _place_cld_letters(ax, is_factorial, df, value_col, genotypes, conditions,
                        cld, positions_map)
 
-    plt.tight_layout()
+    # no plt.tight_layout() here — with rotated x-tick labels it can
+    # mis-measure the layout and clip the y-axis label; bbox_inches='tight'
+    # on savefig below already produces a correctly-cropped image on its own
 
     # save PNG — descriptive filenames
     if value_col and value_col.startswith('Segment_'):
@@ -725,7 +729,8 @@ def plot_segments_facet(csv_path, seg_cols, csv_format='R',
                                zorder=3, edgecolors='none')
 
             ax.set_xticks([ci * cond_spacing for ci in range(n_cond)])
-            ax.set_xticklabels(conditions, fontsize=10)
+            ax.set_xticklabels(conditions, fontsize=10, rotation=45, ha='right',
+                               rotation_mode='anchor')
             all_pos = list(positions_map.values())
             if all_pos:
                 margin = box_width / 2 + inter_gap
@@ -747,7 +752,8 @@ def plot_segments_facet(csv_path, seg_cols, csv_format='R',
                 ax.scatter(gi + jitter, d, color='black', s=12, alpha=0.6,
                            zorder=3, edgecolors='none')
             ax.set_xticks(range(n_geno))
-            ax.set_xticklabels(genotypes, fontsize=10)
+            ax.set_xticklabels(genotypes, fontsize=10, rotation=45, ha='right',
+                               rotation_mode='anchor')
 
         ax.set_title(f'Segment {seg_num}', fontsize=12, fontweight='bold')
         ax.set_ylim(bottom=0)
@@ -791,7 +797,7 @@ def plot_segments_facet(csv_path, seg_cols, csv_format='R',
                     bbox_to_anchor=(1.02, 1), fontsize=10, frameon=True,
                     edgecolor='black', handlelength=1, handleheight=1)
 
-    plt.tight_layout()
+    # no plt.tight_layout() here — see note in plot_results()
     png_path = csv_path.with_name('segments_facet.png')
     fig.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
     print(f"\n  Facet plot saved to: {png_path}")
