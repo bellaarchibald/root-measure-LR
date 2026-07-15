@@ -461,7 +461,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                     self._reclick_idx = 0
                     # rebuild workflow state so review/retrace/manual-trace work
                     self._rebuild_results_from_traces()
-                    self.sidebar.set_step(4)
+                    self.sidebar.set_step(5)
                     self.canvas._measurement_done = True
                     self.sidebar.btn_select_plates.configure(state="normal")
                     self.sidebar.btn_click_roots.configure(state="normal")
@@ -849,7 +849,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
             summary=self.sidebar.get_genotypes_text() or "genotype")
         self.sidebar.sec_workflow.show()
         self.sidebar.sec_workflow.expand()
-        self.sidebar.set_step(4)
+        self.sidebar.set_step(5)
         self.sidebar.btn_select_plates.configure(state="normal", fg_color="#2b5797")
         self.sidebar.btn_click_roots.configure(state="normal")
         self.sidebar.btn_measure.configure(state="normal")

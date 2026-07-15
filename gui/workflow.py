@@ -273,13 +273,20 @@ class MeasurementMixin:
         """Enter lateral-root counting mode, one root at a time."""
         _log("_start_count_lr() called")
         self._hide_action_buttons()
+        self.sidebar.set_step(4)
         self._lr_root_indices = [i for i, r in enumerate(self._results)
                                  if r.get('path') is not None and r['path'].size > 0]
         self._lr_idx = 0
         if not self._lr_root_indices:
             self._finish_measurement()
             return
+        self._lr_ready = False
+        self.after(500, self._enable_lr_ready)
+        self.after(2000, self._enable_lr_ready)
         self._enter_lr_root()
+
+    def _enable_lr_ready(self):
+        self._lr_ready = True
 
     def _enter_lr_root(self):
         """Zoom to and seed lateral-root review for the current root."""
@@ -343,12 +350,10 @@ class MeasurementMixin:
         """Show status for the root currently being reviewed for lateral roots."""
         n = len(self._lr_root_indices)
         pos = self._lr_idx + 1
-        points = self.canvas.get_lr_points()
-        left = sum(1 for p in points if p[2] == 'left')
-        right = sum(1 for p in points if p[2] == 'right')
+        total = len(self.canvas.get_lr_points())
         self.sidebar.set_status(
             f"Count lateral roots {pos}/{n}: click to add, click a marker to remove.\n"
-            f"Left: {left}  Right: {right}  |  Press Enter when done.")
+            f"Lateral roots: {total}  |  Press Enter when done.")
         self.lbl_bottom.configure(
             text="Click=add lateral root  |  Click marker=remove  |  "
                  "Right-click=undo  |  Enter=next root")
@@ -357,17 +362,18 @@ class MeasurementMixin:
         """Persist the current root's lateral root points into results/canvas state."""
         ri = self._lr_root_indices[self._lr_idx]
         points = self.canvas.get_lr_points()
-        left = sum(1 for p in points if p[2] == 'left')
-        right = sum(1 for p in points if p[2] == 'right')
+        total = len(points)
         res = self._results[ri]
-        res['lr_left'] = left
-        res['lr_right'] = right
+        res['lr_total'] = total
         length_cm = res.get('length_cm') or 0
-        res['lr_density'] = (left + right) / length_cm if length_cm else 0
-        self.canvas._lr_results[ri] = {'left': left, 'right': right, 'points': list(points)}
+        res['lr_density'] = total / length_cm if length_cm else 0
+        self.canvas._lr_results[ri] = {'total': total, 'points': list(points)}
 
     def _lr_confirm_current(self):
         """Called when user presses Enter/Next Root during lateral root counting."""
+        if not getattr(self, '_lr_ready', True):
+            _log("  ignoring - lr not ready yet")
+            return
         self._lr_save_current()
         if self._lr_idx < len(self._lr_root_indices) - 1:
             self._lr_idx += 1
@@ -1158,10 +1164,8 @@ class MeasurementMixin:
                     vector_length_cm=vector_length_cm,
                     tortuosity=tortuosity, direction=direction)
                 if lr is not None:
-                    res['lr_left'] = lr['left']
-                    res['lr_right'] = lr['right']
-                    res['lr_density'] = ((lr['left'] + lr['right']) / length_cm
-                                         if length_cm else 0)
+                    res['lr_total'] = lr['total']
+                    res['lr_density'] = lr['total'] / length_cm if length_cm else 0
                 self._results.append(res)
                 self._trace_to_result.append(i)
                 trace_idx += 1
@@ -1177,7 +1181,7 @@ class MeasurementMixin:
         """Save results and show final summary."""
         _log("_finish_measurement() called")
         self.sidebar.hide_progress()
-        self.sidebar.set_step(3)
+        self.sidebar.set_step(4)
         plates = self.canvas.get_plates()
         traced = [r for r in self._results
                   if r['method'] not in ('skip', 'error')]
@@ -1215,7 +1219,7 @@ class MeasurementMixin:
             import traceback; traceback.print_exc()
 
         _log("  updating UI...")
-        self.sidebar.set_step(4)  # marks all 4 steps as done (green)
+        self.sidebar.set_step(5)  # marks all 4 steps as done (green)
         self.canvas._measurement_done = True
         self.canvas._redraw()
         self.sidebar.btn_select_plates.configure(state="normal")

@@ -25,10 +25,9 @@ GROUP_MARK_COLORS = [
     "#B8E8F5", "#D8A0C4", "#D8D8A0", "#B0C4E0", "#A8D8A8",
 ]
 # Lateral root marker colors: pale = auto-detected, bright = manually added
-_LR_COLORS = {
-    ('left', 'auto'): "#7ec8ff", ('left', 'manual'): "#1f78ff",
-    ('right', 'auto'): "#ffb0b0", ('right', 'manual'): "#e60000",
-}
+# (same color regardless of left/right side — side is tracked internally
+# only, e.g. for dedup, not surfaced to the user)
+_LR_COLORS = {'auto': "#ffd24c", 'manual': "#e67300"}
 
 
 class ImageCanvas(ctk.CTkFrame):
@@ -99,7 +98,7 @@ class ImageCanvas(ctk.CTkFrame):
         self._lr_root_bounds = None   # (r1,r2,c1,c2) tight crop around current root
         self._lr_plate_bounds = None  # (r1,r2,c1,c2) whole plate, for zoom-out toggle
         self._lr_zoomed_to_plate = False
-        self._lr_results = {}      # {root_index: {'left':n,'right':n,'points':[...]}}, persists across rebuilds
+        self._lr_results = {}      # {root_index: {'total':n,'points':[...]}}, persists across rebuilds
 
         # manual endpoints state (per-root top+bottom clicking)
         self._root_bottoms = {}    # {root_index: (row, col)} bottom click per root
@@ -197,11 +196,13 @@ class ImageCanvas(ctk.CTkFrame):
                 if self._on_click_callback:
                     self._on_click_callback()
                 return
-            # Button clicks are always intentional — bypass _review_ready guard
-            # (the guard only exists to prevent leftover Enter keypresses)
+            # Button clicks are always intentional — bypass ready guards
+            # (the guards only exist to prevent leftover Enter keypresses)
             app = self.winfo_toplevel()
             if hasattr(app, '_review_ready'):
                 app._review_ready = True
+            if hasattr(app, '_lr_ready'):
+                app._lr_ready = True
             if self._on_done_callback:
                 self._on_done_callback()
         except Exception as e:
@@ -299,7 +300,7 @@ class ImageCanvas(ctk.CTkFrame):
 
     def _draw_lr_point(self, row, col, side, origin):
         cx, cy = self.image_to_canvas(col, row)
-        color = _LR_COLORS[(side, origin)]
+        color = _LR_COLORS[origin]
         r = 6
         id1 = self.canvas.create_line(cx - r, cy - r, cx + r, cy + r,
                                       fill=color, width=2)
@@ -336,7 +337,7 @@ class ImageCanvas(ctk.CTkFrame):
 
     def set_lr_results(self, lr_results):
         """Restore per-root lateral root counts from saved state."""
-        self._lr_results = {int(k): {'left': v['left'], 'right': v['right'],
+        self._lr_results = {int(k): {'total': v['total'],
                                      'points': [tuple(p) for p in v.get('points', [])]}
                             for k, v in lr_results.items()}
 

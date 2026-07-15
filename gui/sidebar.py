@@ -1096,10 +1096,10 @@ class Sidebar(ctk.CTkScrollableFrame):
         self.lbl_status.configure(text=text)
 
     def set_step(self, step):
-        """Highlight the current workflow step (1-3). Previous steps turn green."""
+        """Highlight the current workflow step (1-4). Previous steps turn green."""
         buttons = [
             self.btn_click_roots,
-            self.btn_measure, self.btn_review,
+            self.btn_measure, self.btn_review, self.btn_count_lr,
         ]
         for i, btn in enumerate(buttons):
             num = i + 1

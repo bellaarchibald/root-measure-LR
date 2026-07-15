@@ -333,7 +333,7 @@ def _collect_canvas(canvas, plate_thresholds=None, sidebar=None):
         all_marks[str(k)] = [list(m) for m in v]
     lr_results = {}
     for k, v in canvas._lr_results.items():
-        lr_results[str(k)] = {'left': v['left'], 'right': v['right'],
+        lr_results[str(k)] = {'total': v['total'],
                               'points': [list(p) for p in v.get('points', [])]}
     traces = []
     for path, shades, mark_indices in canvas._traces:
@@ -372,7 +372,7 @@ def _get_workflow_step(sidebar):
     """Determine current workflow step from button colors."""
     buttons = [
         sidebar.btn_click_roots,
-        sidebar.btn_measure, sidebar.btn_review,
+        sidebar.btn_measure, sidebar.btn_review, sidebar.btn_count_lr,
     ]
     step = 0
     for i, btn in enumerate(buttons):
