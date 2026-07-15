@@ -1397,6 +1397,15 @@ class MeasurementMixin:
             # plot each segment column if present
             import pandas as _pd
             _cols = list(_pd.read_csv(raw_path, nrows=0).columns)
+            if 'LR_Density' in _cols:
+                s = plot_results(raw_path,
+                                 value_col='LR_Density',
+                                 ylabel='Lateral root density (roots/cm)',
+                                 csv_format='R',
+                                 genotype_colors=geno_colors,
+                                 custom_colors=custom_colors)
+                if s:
+                    summaries.append(s)
             seg_cols = [c for c in _cols
                         if c.startswith('Segment_') and c.endswith('_cm')]
             for sc in seg_cols:

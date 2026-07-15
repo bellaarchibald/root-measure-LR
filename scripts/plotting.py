@@ -248,6 +248,8 @@ def format_statistics_summary(df, value_col, is_factorial, stats_info, cld):
     title = value_col.replace('_', ' ').upper()
     if value_col == 'Length_cm':
         title = 'PRIMARY ROOT LENGTH'
+    elif value_col == 'LR_Density':
+        title = 'LATERAL ROOT DENSITY'
     elif value_col.startswith('Segment_') and value_col.endswith('_cm'):
         seg = value_col.replace('Segment_', '').replace('_cm', '')
         title = f'SEGMENT {seg} LENGTH'
@@ -628,6 +630,8 @@ def plot_results(csv_path, value_col=None, ylabel=None, csv_format='R',
     if value_col and value_col.startswith('Segment_'):
         seg_num = value_col.replace('Segment_', '').replace('_cm', '')
         png_path = csv_path.with_name(f'segment_{seg_num}_length.png')
+    elif value_col == 'LR_Density':
+        png_path = csv_path.with_name('lateral_root_density.png')
     else:
         png_path = csv_path.with_name('primary_root_length.png')
     fig.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
