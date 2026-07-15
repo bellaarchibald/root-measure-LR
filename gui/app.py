@@ -1674,6 +1674,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
             self.canvas.clear_lr_results()
             self.canvas.clear_traces()
             self.canvas.clear_review()  # clear any review selection highlights
+            self.canvas._measurement_done = False  # re-clicking an already-finished image
             self._current_plate_idx = 0
             self._split = self.sidebar.is_split_plate()
             self._split_stage = 0
