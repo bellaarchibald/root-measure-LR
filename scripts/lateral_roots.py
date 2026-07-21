@@ -97,6 +97,8 @@ def detect_lateral_roots(binary, path, scale=SCALE_PX_PER_CM, skeleton=None):
     path = np.asarray(path)
     if path.size == 0:
         return []
+    # manually-traced paths are interpolated floats; pixel indexing needs ints
+    path = np.round(path).astype(int)
 
     if skeleton is None:
         skeleton = skeletonize(binary)
