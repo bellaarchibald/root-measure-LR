@@ -300,6 +300,9 @@ class MeasurementMixin:
         plate_binary = self._plate_binaries.get(pi, self._binary)
         plates = self.canvas.get_plates()
         plate_bounds = plates[pi] if pi < len(plates) else None
+        _log(f"_enter_lr_root: lr_idx={self._lr_idx} ri={ri} method={res.get('method')} "
+            f"path_shape={path.shape} path_top={tuple(path[0]) if len(path) else None} "
+            f"path_id={id(path)} pi={pi} prior_cached={ri in self.canvas._lr_results}")
 
         prior = self.canvas._lr_results.get(ri)
         if prior is not None:
