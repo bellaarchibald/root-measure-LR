@@ -51,6 +51,20 @@ def _interpolate_manual_path(points):
         all_pts.extend(zip(rows, cols))
     return np.array(all_pts)
 
+
+def _lr_path_key(path):
+    """Compact fingerprint of a root path, used to detect a cached lateral-root
+    result that no longer matches the current primary trace (e.g. the primary
+    root was retraced after the lateral-root count was saved, possibly in an
+    earlier session that got restored before the retrace was re-saved).
+    Flat tuple of plain ints so it round-trips through JSON (list) and back
+    to a tuple that still compares equal."""
+    if path is None or len(path) == 0:
+        return None
+    top = np.round(path[0]).astype(int)
+    bot = np.round(path[-1]).astype(int)
+    return (int(len(path)), int(top[0]), int(top[1]), int(bot[0]), int(bot[1]))
+
 # genotype color shades: [bright, pastel] for trace segments (30 entries)
 # First 8 are Okabe-Ito (colorblind-friendly), then extended hues
 GROUP_COLORS = [
@@ -305,6 +319,11 @@ class MeasurementMixin:
             f"path_id={id(path)} pi={pi} prior_cached={ri in self.canvas._lr_results}")
 
         prior = self.canvas._lr_results.get(ri)
+        if prior is not None and prior.get('path_key') != _lr_path_key(path):
+            # cached lateral-root data doesn't match this root's current primary
+            # path (e.g. it was retraced after this was saved) — treat as stale
+            _log(f"  stale prior_cached lr data for ri={ri} (path changed) — ignoring")
+            prior = None
         if prior is not None:
             auto_points = [{'row': r, 'col': c, 'side': s}
                            for (r, c, s, o) in prior['points'] if o == 'auto']
@@ -393,7 +412,8 @@ class MeasurementMixin:
         res['lr_total'] = total
         length_cm = res.get('length_cm') or 0
         res['lr_density'] = total / length_cm if length_cm else 0
-        self.canvas._lr_results[ri] = {'total': total, 'points': list(points)}
+        self.canvas._lr_results[ri] = {'total': total, 'points': list(points),
+                                       'path_key': _lr_path_key(res['path'])}
 
     def _lr_confirm_current(self):
         """Called when user presses Enter/Next Root during lateral root counting."""
@@ -1183,6 +1203,8 @@ class MeasurementMixin:
                     dy = -float(path[-1, 0] - path[0, 0])
                     direction = round(np.degrees(np.arctan2(dy, dx)) % 360, 1)
                 lr = self.canvas._lr_results.get(i)
+                if lr is not None and lr.get('path_key') != _lr_path_key(path):
+                    lr = None  # stale — this root's path changed since it was saved
                 res = dict(
                     length_cm=length_cm, length_px=length_px,
                     path=path, method='restored', warning=None,

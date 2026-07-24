@@ -334,7 +334,9 @@ def _collect_canvas(canvas, plate_thresholds=None, sidebar=None):
     lr_results = {}
     for k, v in canvas._lr_results.items():
         lr_results[str(k)] = {'total': v['total'],
-                              'points': [list(p) for p in v.get('points', [])]}
+                              'points': [list(p) for p in v.get('points', [])],
+                              'path_key': (list(v['path_key'])
+                                          if v.get('path_key') is not None else None)}
     traces = []
     for path, shades, mark_indices in canvas._traces:
         # use tolist() for numpy arrays to get native Python types

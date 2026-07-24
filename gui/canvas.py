@@ -338,7 +338,9 @@ class ImageCanvas(ctk.CTkFrame):
     def set_lr_results(self, lr_results):
         """Restore per-root lateral root counts from saved state."""
         self._lr_results = {int(k): {'total': v['total'],
-                                     'points': [tuple(p) for p in v.get('points', [])]}
+                                     'points': [tuple(p) for p in v.get('points', [])],
+                                     'path_key': (tuple(v['path_key'])
+                                                 if v.get('path_key') is not None else None)}
                             for k, v in lr_results.items()}
 
     def get_lr_results(self):
