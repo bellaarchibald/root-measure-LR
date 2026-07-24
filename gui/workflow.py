@@ -307,13 +307,19 @@ class MeasurementMixin:
                            for (r, c, s, o) in prior['points'] if o == 'auto']
             manual_points = [(r, c, s, o) for (r, c, s, o) in prior['points'] if o == 'manual']
         else:
-            if pi not in self._lr_skeletons:
-                self.sidebar.set_status(
-                    f"Preparing lateral root detection for plate {pi + 1}...")
-                self.update()
-                self._lr_skeletons[pi] = skeletonize(plate_binary)
-            auto_points = detect_lateral_roots(
-                plate_binary, path, self._scale_val, skeleton=self._lr_skeletons[pi])
+            try:
+                if pi not in self._lr_skeletons:
+                    self.sidebar.set_status(
+                        f"Preparing lateral root detection for plate {pi + 1}...")
+                    self.update()
+                    self._lr_skeletons[pi] = skeletonize(plate_binary)
+                auto_points = detect_lateral_roots(
+                    plate_binary, path, self._scale_val, skeleton=self._lr_skeletons[pi])
+            except Exception as e:
+                _log(f"ERROR in detect_lateral_roots for root {ri}: {e}")
+                import traceback; traceback.print_exc()
+                self.sidebar.set_status(f"Auto-detection error on this root: {e}")
+                auto_points = []
             manual_points = []
 
         self.canvas.set_lr_context(lambda row, col, p=path: classify_side(p, (row, col)))
@@ -335,8 +341,13 @@ class MeasurementMixin:
         c2 = int(path[:, 1].max()) + side_pad
         if plate_bounds is not None:
             pr1, pr2, pc1, pc2 = plate_bounds
-            r1, r2 = max(r1, pr1), min(r2, pr2)
-            c1, c2 = max(c1, pc1), min(c2, pc2)
+            cr1, cr2 = max(r1, pr1), min(r2, pr2)
+            cc1, cc2 = max(c1, pc1), min(c2, pc2)
+            # if clipping to plate bounds collapsed/inverted the region (e.g. the
+            # root's plate index doesn't match where its path actually is), fall
+            # back to the un-clipped root bounds so the zoom still moves there
+            if cr2 > cr1 and cc2 > cc1:
+                r1, r2, c1, c2 = cr1, cr2, cc1, cc2
         self.canvas.set_lr_zoom_targets((r1, r2, c1, c2), plate_bounds)
 
         self._show_lr_status()
