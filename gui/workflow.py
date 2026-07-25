@@ -289,6 +289,19 @@ class MeasurementMixin:
         _log("_start_count_lr() called")
         self._hide_action_buttons()
         self.sidebar.set_step(4)
+        # ensure binary masks exist (may be missing after session restore)
+        if not getattr(self, '_plate_binaries', None):
+            self.sidebar.set_status("Preprocessing...")
+            self.update()
+            all_thresh = self.sidebar.get_all_thresholds(force_value=True)
+            self._plate_binaries = {}
+            plates_tmp = self.canvas.get_plates()
+            for pi_tmp in range(len(plates_tmp)):
+                thresh = all_thresh.get(pi_tmp, all_thresh.get(0))
+                self._plate_binaries[pi_tmp] = preprocess(
+                    self.image, scale=self._scale_val,
+                    sensitivity=self._sensitivity, threshold=thresh)
+            self._binary = self._plate_binaries.get(0)
         self._lr_skeletons = {}  # per-plate cache — skeletonizing is expensive
         self._lr_root_indices = [i for i, r in enumerate(self._results)
                                  if r.get('path') is not None and r['path'].size > 0]
@@ -324,6 +337,7 @@ class MeasurementMixin:
             # path (e.g. it was retraced after this was saved) — treat as stale
             _log(f"  stale prior_cached lr data for ri={ri} (path changed) — ignoring")
             prior = None
+        lr_error = None
         if prior is not None:
             auto_points = [{'row': r, 'col': c, 'side': s}
                            for (r, c, s, o) in prior['points'] if o == 'auto']
@@ -340,7 +354,7 @@ class MeasurementMixin:
             except Exception as e:
                 _log(f"ERROR in detect_lateral_roots for root {ri}: {e}")
                 import traceback; traceback.print_exc()
-                self.sidebar.set_status(f"Auto-detection error on this root: {e}")
+                lr_error = str(e)
                 auto_points = []
             manual_points = []
 
@@ -373,6 +387,9 @@ class MeasurementMixin:
         self.canvas.set_lr_zoom_targets((r1, r2, c1, c2), plate_bounds)
 
         self._show_lr_status()
+        if lr_error:
+            self.sidebar.set_status(
+                self.sidebar.lbl_status.cget("text") + f"\nAuto-detection error: {lr_error}")
         self._show_action_frame()
         n = len(self._lr_root_indices)
         is_last = self._lr_idx >= n - 1
