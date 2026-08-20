@@ -24,12 +24,12 @@ Requires macOS or Windows 10+. The installer sets up Python 3.12, dependencies, 
 
 **macOS** — open Terminal and paste:
 ```bash
-sudo curl -sL https://raw.githubusercontent.com/williangviana/root-measure/stable/install/install.sh | bash
+sudo curl -sL https://raw.githubusercontent.com/bellaarchibald/root-measure-LR/stable/install/install.sh | bash
 ```
 
 **Windows** — open PowerShell and paste:
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/williangviana/root-measure/stable/install/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/bellaarchibald/root-measure-LR/stable/install/install.ps1 | iex"
 ```
 
 After installation:
@@ -53,8 +53,8 @@ Progress is auto-saved: closing the app mid-batch and reopening it restores clic
 ## Development
 
 ```bash
-git clone https://github.com/williangviana/root-measure.git
-cd root-measure
+git clone https://github.com/bellaarchibald/root-measure-LR.git
+cd root-measure-LR
 python3.12 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r install/requirements.txt
