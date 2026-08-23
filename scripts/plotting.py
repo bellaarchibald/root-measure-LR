@@ -115,9 +115,14 @@ def _run_statistics_simple(df, value_col):
         (cld, stats_info) where cld is dict of genotype -> CLD letter string
         and stats_info is a dict with test details and pairwise results.
     """
-    genotypes = sort_genotypes_wt_first(df['Genotype'].unique().tolist())
-    groups = [df.loc[df['Genotype'] == g, value_col].dropna().values
-              for g in genotypes]
+    genotypes_all = sort_genotypes_wt_first(df['Genotype'].unique().tolist())
+    genotypes = []
+    groups = []
+    for g in genotypes_all:
+        subset = df.loc[df['Genotype'] == g, value_col].dropna().values
+        if len(subset) > 0:
+            genotypes.append(g)
+            groups.append(subset)
     info = {'group_keys': genotypes, 'groups': groups, 'pairwise': {}}
 
     if len(genotypes) < 2:
@@ -130,16 +135,25 @@ def _run_statistics_simple(df, value_col):
         info['stat_val'] = t_stat
         info['p_val'] = p_val
         pairwise = {(genotypes[0], genotypes[1]): p_val}
-    else:
-        f_stat, p_anova = stats.f_oneway(*groups)
-        info['test'] = 'One-way ANOVA'
-        info['stat_name'] = 'F'
-        info['stat_val'] = f_stat
-        info['p_val'] = p_anova
-        result = stats.tukey_hsd(*groups)
-        pairwise = {}
-        for i, j in combinations(range(len(genotypes)), 2):
-            pairwise[(genotypes[i], genotypes[j])] = result.pvalue[i, j]
+        info['pairwise'] = pairwise
+        cld = _compact_letter_display(genotypes, pairwise)
+        return cld, info
+
+    f_stat, p_anova = stats.f_oneway(*groups)
+    info['test'] = 'One-way ANOVA'
+    info['stat_name'] = 'F'
+    info['stat_val'] = f_stat
+    info['p_val'] = p_anova
+    if any(len(g) < 2 for g in groups):
+        # Tukey HSD requires 2+ replicates per group — skip post-hoc/CLD
+        # rather than crashing (e.g. a plate with lateral-root counting
+        # skipped leaves too few valid values for one genotype)
+        info['posthoc_skipped'] = True
+        return {g: '' for g in genotypes}, info
+    result = stats.tukey_hsd(*groups)
+    pairwise = {}
+    for i, j in combinations(range(len(genotypes)), 2):
+        pairwise[(genotypes[i], genotypes[j])] = result.pvalue[i, j]
 
     info['pairwise'] = pairwise
     cld = _compact_letter_display(genotypes, pairwise)
@@ -219,7 +233,13 @@ def _run_statistics_factorial(df, value_col):
         info['stat_val'] = f_stat
         info['p_val'] = p_anova
 
-    # Tukey HSD pairwise comparisons (always via scipy for CLD)
+    # Tukey HSD pairwise comparisons (always via scipy for CLD) — requires
+    # 2+ replicates per group; skip post-hoc/CLD rather than crashing (e.g.
+    # a plate with lateral-root counting skipped leaves too few valid
+    # values for one genotype/condition group)
+    if any(len(g) < 2 for g in groups):
+        info['posthoc_skipped'] = True
+        return {k: '' for k in group_keys}, info
     result = stats.tukey_hsd(*groups)
     pairwise = {}
     for i, j in combinations(range(len(group_keys)), 2):
@@ -310,7 +330,11 @@ def format_statistics_summary(df, value_col, is_factorial, stats_info, cld):
 
     # pairwise comparisons — only for 3+ groups (Tukey HSD)
     pairwise = stats_info.get('pairwise', {})
-    if len(group_keys) > 2 and pairwise:
+    if stats_info.get('posthoc_skipped'):
+        lines.append('Post-hoc comparisons skipped: at least one group has')
+        lines.append('fewer than 2 replicates for this measurement.')
+        lines.append('')
+    elif len(group_keys) > 2 and pairwise:
         sig_pairs = {k: v for k, v in pairwise.items() if v < 0.05}
         lines.append('Significant Pairwise Differences (Tukey HSD, p < 0.05)')
         lines.append(line)
