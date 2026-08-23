@@ -62,6 +62,7 @@ class ImageCanvas(ctk.CTkFrame):
         self._pil_base = None        # cached PIL Image from numpy
         self._img_id = None          # canvas id of the main image item
         self._rendered_scale = None  # scale at which _photo was last rendered
+        self._rendered_crop_origin = None  # (left, top) image coords of last render's crop
 
         # interaction mode
         self._mode = self.MODE_VIEW
@@ -520,6 +521,13 @@ class ImageCanvas(ctk.CTkFrame):
         self._offset_x = (cw - iw * self._scale) / 2
         self._offset_y = (ch - ih * self._scale) / 2
 
+    def reset_view(self):
+        """Reset zoom/pan to fit the whole scan (e.g. after finishing measurement,
+        so it's clear counting is done rather than still zoomed on the last root)."""
+        self._user_zoomed = False
+        self._fit_image()
+        self._redraw()
+
     def zoom_to_region(self, r1, r2, c1, c2, pad_frac=0.0):
         """Zoom canvas to show a specific image region with padding."""
         if self._image_np is None:
@@ -543,6 +551,35 @@ class ImageCanvas(ctk.CTkFrame):
         self._offset_y = (ch - rh * self._scale) / 2 - r1 * self._scale
         self._redraw()
 
+    def _visible_render(self, resample, pad_frac=0.5):
+        """Crop _pil_base to the (padded) visible viewport, then resize just
+        that crop — avoids resampling the full multi-thousand-pixel scan on
+        every zoom/pan step. pad_frac extends the crop beyond the viewport
+        by that fraction of the canvas size on each side, so a small pan
+        doesn't immediately need a re-crop.
+
+        Returns (PIL.Image, canvas_x, canvas_y, left, top) or None if the
+        viewport doesn't overlap the image.
+        """
+        iw, ih = self._pil_base.size
+        cw = self.canvas.winfo_width()
+        ch = self.canvas.winfo_height()
+        pad_x = cw * pad_frac
+        pad_y = ch * pad_frac
+        left = max(0, int((-pad_x - self._offset_x) / self._scale))
+        top = max(0, int((-pad_y - self._offset_y) / self._scale))
+        right = min(iw, int(np.ceil((cw + pad_x - self._offset_x) / self._scale)) + 1)
+        bottom = min(ih, int(np.ceil((ch + pad_y - self._offset_y) / self._scale)) + 1)
+        if right <= left or bottom <= top:
+            return None
+        crop = self._pil_base.crop((left, top, right, bottom))
+        new_w = max(1, round((right - left) * self._scale))
+        new_h = max(1, round((bottom - top) * self._scale))
+        resized = crop.resize((new_w, new_h), resample)
+        cx = left * self._scale + self._offset_x
+        cy = top * self._scale + self._offset_y
+        return resized, cx, cy, left, top
+
     def _redraw(self):
         """Redraw image and all overlays at full LANCZOS quality."""
         self.canvas.delete("all")
@@ -550,16 +587,15 @@ class ImageCanvas(ctk.CTkFrame):
         if self._pil_base is None:
             return
 
-        iw, ih = self._pil_base.size
-        new_w = max(1, int(iw * self._scale))
-        new_h = max(1, int(ih * self._scale))
-
-        pil_img = self._pil_base.resize((new_w, new_h), Image.LANCZOS)
-        self._photo = ImageTk.PhotoImage(pil_img)
-        self._img_id = self.canvas.create_image(
-            int(self._offset_x), int(self._offset_y),
-            image=self._photo, anchor="nw"
-        )
+        result = self._visible_render(Image.LANCZOS)
+        if result is not None:
+            pil_img, cx, cy, left, top = result
+            self._photo = ImageTk.PhotoImage(pil_img)
+            self._img_id = self.canvas.create_image(
+                int(cx), int(cy),
+                image=self._photo, anchor="nw"
+            )
+            self._rendered_crop_origin = (left, top)
         self._rendered_scale = self._scale
 
         self._draw_overlays()
@@ -1182,21 +1218,24 @@ class ImageCanvas(ctk.CTkFrame):
         """Move existing image on canvas (instant); full re-render on settle."""
         if self._zoom_settle_id is not None:
             self.after_cancel(self._zoom_settle_id)
-        if self._img_id is not None and self._rendered_scale == self._scale:
-            # Pure pan — just move the image, no resize needed
-            self.canvas.coords(self._img_id,
-                               int(self._offset_x), int(self._offset_y))
+        if (self._img_id is not None and self._rendered_scale == self._scale
+                and self._rendered_crop_origin is not None):
+            # Pure pan — just move the already-rendered crop, no resize needed
+            left, top = self._rendered_crop_origin
+            cx = left * self._scale + self._offset_x
+            cy = top * self._scale + self._offset_y
+            self.canvas.coords(self._img_id, int(cx), int(cy))
         elif self._pil_base is not None:
-            # Zoom changed — quick NEAREST resize
+            # Zoom changed — quick NEAREST resize of just the visible region
             self.canvas.delete("all")
-            iw, ih = self._pil_base.size
-            new_w = max(1, int(iw * self._scale))
-            new_h = max(1, int(ih * self._scale))
-            pil_img = self._pil_base.resize((new_w, new_h), Image.NEAREST)
-            self._photo = ImageTk.PhotoImage(pil_img)
-            self._img_id = self.canvas.create_image(
-                int(self._offset_x), int(self._offset_y),
-                image=self._photo, anchor="nw")
+            result = self._visible_render(Image.NEAREST)
+            if result is not None:
+                pil_img, cx, cy, left, top = result
+                self._photo = ImageTk.PhotoImage(pil_img)
+                self._img_id = self.canvas.create_image(
+                    int(cx), int(cy),
+                    image=self._photo, anchor="nw")
+                self._rendered_crop_origin = (left, top)
             self._rendered_scale = self._scale
         self._zoom_settle_id = self.after(150, self._settle_zoom)
 

@@ -2,6 +2,8 @@
 
 import cv2
 import numpy as np
+import threading
+import customtkinter as ctk
 from datetime import datetime
 
 import os as _os
@@ -284,31 +286,125 @@ class MeasurementMixin:
         # enter review mode; lateral root counting happens after review is accepted
         self._show_review()
 
+    def _run_in_background(self, work_fn, on_done):
+        """Run work_fn() in a worker thread; call on_done(result) on the
+        main thread once finished. Used for expensive numpy/cv2/skimage
+        calls (Otsu + Gaussian blur preprocessing, skeletonize) so they
+        don't block the GUI event loop and freeze the window.
+        """
+        result = {}
+
+        def target():
+            try:
+                result['value'] = work_fn()
+            except Exception as e:
+                result['error'] = e
+
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+
+        def poll():
+            if thread.is_alive():
+                self.after(50, poll)
+                return
+            if 'error' in result:
+                _log(f"ERROR in background task: {result['error']}")
+                self.sidebar.set_status(f"Error: {result['error']}")
+                return
+            on_done(result['value'])
+
+        self.after(50, poll)
+
     def _start_count_lr(self):
-        """Enter lateral-root counting mode, one root at a time."""
+        """Enter lateral-root counting mode: ask which plates to count first."""
         _log("_start_count_lr() called")
         self._hide_action_buttons()
         self.sidebar.set_step(4)
-        # ensure binary masks exist (may be missing after session restore)
-        if not getattr(self, '_plate_binaries', None):
-            self.sidebar.set_status("Preprocessing...")
-            self.update()
-            all_thresh = self.sidebar.get_all_thresholds(force_value=True)
-            self._plate_binaries = {}
-            plates_tmp = self.canvas.get_plates()
-            for pi_tmp in range(len(plates_tmp)):
-                thresh = all_thresh.get(pi_tmp, all_thresh.get(0))
-                self._plate_binaries[pi_tmp] = preprocess(
-                    self.image, scale=self._scale_val,
-                    sensitivity=self._sensitivity, threshold=thresh)
-            self._binary = self._plate_binaries.get(0)
-        self._lr_skeletons = {}  # per-plate cache — skeletonizing is expensive
-        self._lr_root_indices = [i for i, r in enumerate(self._results)
-                                 if r.get('path') is not None and r['path'].size > 0]
+        all_lr_root_indices = [i for i, r in enumerate(self._results)
+                               if r.get('path') is not None and r['path'].size > 0]
+        if not all_lr_root_indices:
+            self._finish_measurement()
+            return
+        root_plates = self.canvas._root_plates
+        plates_with_roots = sorted(set(
+            root_plates[i] if i < len(root_plates) else 0
+            for i in all_lr_root_indices))
+        self._prompt_lr_plate_selection(all_lr_root_indices, plates_with_roots)
+
+    def _prompt_lr_plate_selection(self, all_lr_root_indices, plates_with_roots):
+        """Ask which plates (if any) to run lateral-root counting on."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Count Lateral Roots")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.grab_set()
+
+        ctk.CTkLabel(
+            dialog, text="Which plates should lateral roots be counted on?",
+            wraplength=260, justify="left"
+        ).pack(padx=20, pady=(20, 10))
+
+        plate_vars = {}
+        for pi in plates_with_roots:
+            var = ctk.BooleanVar(value=False)
+            ctk.CTkCheckBox(dialog, text=f"Plate {pi + 1}", variable=var).pack(
+                anchor="w", padx=20, pady=4)
+            plate_vars[pi] = var
+
+        def on_confirm():
+            selected = {pi for pi, var in plate_vars.items() if var.get()}
+            dialog.destroy()
+            self._resume_start_count_lr(all_lr_root_indices, selected)
+
+        def on_skip():
+            dialog.destroy()
+            self._resume_start_count_lr(all_lr_root_indices, set())
+
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(pady=(15, 20), padx=20, fill="x")
+        ctk.CTkButton(btn_frame, text="Skip All", fg_color="#555555",
+                      command=on_skip).pack(side="left", expand=True, padx=(0, 5))
+        ctk.CTkButton(btn_frame, text="Start Counting", fg_color="#2b5797",
+                      command=on_confirm).pack(side="left", expand=True, padx=(5, 0))
+        dialog.protocol("WM_DELETE_WINDOW", on_skip)
+
+    def _resume_start_count_lr(self, all_lr_root_indices, selected_plates):
+        """Continue _start_count_lr once the user has picked which plates to count."""
+        root_plates = self.canvas._root_plates
+        self._lr_root_indices = [
+            i for i in all_lr_root_indices
+            if (root_plates[i] if i < len(root_plates) else 0) in selected_plates]
         self._lr_idx = 0
         if not self._lr_root_indices:
             self._finish_measurement()
             return
+        self._lr_skeletons = {}  # per-plate cache — skeletonizing is expensive
+        # ensure binary masks exist (may be missing after session restore)
+        if not getattr(self, '_plate_binaries', None):
+            self.sidebar.set_status("Preprocessing...")
+            all_thresh = self.sidebar.get_all_thresholds(force_value=True)
+            plates_tmp = self.canvas.get_plates()
+
+            def work():
+                binaries = {}
+                for pi_tmp in range(len(plates_tmp)):
+                    thresh = all_thresh.get(pi_tmp, all_thresh.get(0))
+                    binaries[pi_tmp] = preprocess(
+                        self.image, scale=self._scale_val,
+                        sensitivity=self._sensitivity, threshold=thresh)
+                return binaries
+
+            def done(binaries):
+                self._plate_binaries = binaries
+                self._binary = self._plate_binaries.get(0)
+                self._lr_ready = False
+                self.after(500, self._enable_lr_ready)
+                self.after(2000, self._enable_lr_ready)
+                self._enter_lr_root()
+
+            self._run_in_background(work, done)
+            return
+        self._binary = self._plate_binaries.get(0)
         self._lr_ready = False
         self.after(500, self._enable_lr_ready)
         self.after(2000, self._enable_lr_ready)
@@ -337,27 +433,54 @@ class MeasurementMixin:
             # path (e.g. it was retraced after this was saved) — treat as stale
             _log(f"  stale prior_cached lr data for ri={ri} (path changed) — ignoring")
             prior = None
-        lr_error = None
         if prior is not None:
             auto_points = [{'row': r, 'col': c, 'side': s}
                            for (r, c, s, o) in prior['points'] if o == 'auto']
             manual_points = [(r, c, s, o) for (r, c, s, o) in prior['points'] if o == 'manual']
-        else:
-            try:
-                if pi not in self._lr_skeletons:
-                    self.sidebar.set_status(
-                        f"Preparing lateral root detection for plate {pi + 1}...")
-                    self.update()
-                    self._lr_skeletons[pi] = skeletonize(plate_binary)
-                auto_points = detect_lateral_roots(
-                    plate_binary, path, self._scale_val, skeleton=self._lr_skeletons[pi])
-            except Exception as e:
-                _log(f"ERROR in detect_lateral_roots for root {ri}: {e}")
-                import traceback; traceback.print_exc()
-                lr_error = str(e)
-                auto_points = []
-            manual_points = []
+            self._finish_enter_lr_root(ri, path, pi, plate_bounds, auto_points, manual_points, None)
+            return
 
+        if pi in self._lr_skeletons:
+            auto_points, lr_error = self._detect_lateral_roots_safe(
+                plate_binary, path, self._lr_skeletons[pi], ri)
+            self._finish_enter_lr_root(ri, path, pi, plate_bounds, auto_points, [], lr_error)
+            return
+
+        # skeletonizing a full-plate binary mask is expensive — run it off
+        # the main thread so the UI doesn't freeze. Hide the Next/Previous
+        # Root buttons and block Enter meanwhile so a click/keypress can't
+        # fire against the stale (previous root's) handler while this is
+        # in flight — that would misfile this root's points under the wrong
+        # index once _lr_idx has already advanced.
+        self._hide_action_buttons()
+        self._lr_ready = False
+        self.sidebar.set_status(f"Preparing lateral root detection for plate {pi + 1}...")
+
+        def work():
+            return skeletonize(plate_binary)
+
+        def done(skeleton):
+            self._lr_skeletons[pi] = skeleton
+            auto_points, lr_error = self._detect_lateral_roots_safe(
+                plate_binary, path, skeleton, ri)
+            self._lr_ready = True
+            self._finish_enter_lr_root(ri, path, pi, plate_bounds, auto_points, [], lr_error)
+
+        self._run_in_background(work, done)
+
+    def _detect_lateral_roots_safe(self, plate_binary, path, skeleton, ri):
+        """detect_lateral_roots(), catching and logging errors as (points, error)."""
+        try:
+            return detect_lateral_roots(
+                plate_binary, path, self._scale_val, skeleton=skeleton), None
+        except Exception as e:
+            _log(f"ERROR in detect_lateral_roots for root {ri}: {e}")
+            import traceback; traceback.print_exc()
+            return [], str(e)
+
+    def _finish_enter_lr_root(self, ri, path, pi, plate_bounds, auto_points, manual_points, lr_error):
+        """Continue _enter_lr_root once auto-detected points are ready
+        (possibly after an async skeletonize call)."""
         self.canvas.set_lr_context(lambda row, col, p=path: classify_side(p, (row, col)))
         self.canvas.seed_lr_points(auto_points)
         for (r, c, s, o) in manual_points:
@@ -1286,7 +1409,7 @@ class MeasurementMixin:
         _log("  updating UI...")
         self.sidebar.set_step(5)  # marks all 4 steps as done (green)
         self.canvas._measurement_done = True
-        self.canvas._redraw()
+        self.canvas.reset_view()
         self.sidebar.btn_select_plates.configure(state="normal")
         self.sidebar.btn_click_roots.configure(state="normal")
         self.sidebar.btn_measure.configure(state="normal")
