@@ -1,16 +1,16 @@
-# Root Measure — One-line installer for Windows
-# Usage: powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/williangviana/root-measure/stable/install/install.ps1 | iex"
+# Root Measure LR — One-line installer for Windows
+# Usage: powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/bellaarchibald/root-measure-LR/stable/install/install.ps1 | iex"
 
 $ErrorActionPreference = "Stop"
 
-$AppName = "Root Measure"
-$Repo = "williangviana/root-measure"
-$WorkDir = "$env:TEMP\root-measure-install"
-$InstallDir = "$env:LOCALAPPDATA\Root Measure"
+$AppName = "Root Measure LR"
+$Repo = "bellaarchibald/root-measure-LR"
+$WorkDir = "$env:TEMP\root-measure-lr-install"
+$InstallDir = "$env:LOCALAPPDATA\Root Measure LR"
 
 Write-Host ""
 Write-Host "============================================"
-Write-Host "  Root Measure - Installer"
+Write-Host "  Root Measure LR - Installer"
 Write-Host "============================================"
 Write-Host ""
 
@@ -41,10 +41,10 @@ $pyVersion = & $py -c "import sys; print(f'{sys.version_info.major}.{sys.version
 Write-Host "[1/6] Python $pyVersion OK"
 
 # --- 2. Download project from GitHub ---
-Write-Host "[2/6] Downloading Root Measure..."
+Write-Host "[2/6] Downloading Root Measure LR..."
 if (Test-Path $WorkDir) { Remove-Item $WorkDir -Recurse -Force }
 New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null
-$zipPath = "$env:TEMP\root-measure.zip"
+$zipPath = "$env:TEMP\root-measure-lr.zip"
 Invoke-WebRequest -Uri "https://github.com/$Repo/archive/refs/heads/stable.zip" -OutFile $zipPath
 Expand-Archive -Path $zipPath -DestinationPath $WorkDir -Force
 Remove-Item $zipPath -Force
@@ -92,7 +92,7 @@ Move-Item $builtDir $InstallDir
 $exePath = "$InstallDir\RootMeasure.exe"
 if (Test-Path $exePath) {
     $desktop = [Environment]::GetFolderPath("Desktop")
-    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut("$desktop\Root Measure.lnk")
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut("$desktop\Root Measure LR.lnk")
     $shortcut.TargetPath = $exePath
     $shortcut.WorkingDirectory = $InstallDir
     $shortcut.Description = $AppName
