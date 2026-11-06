@@ -342,12 +342,12 @@ def append_results_to_csv(results, csv_path, plates, plate_labels, plate_offset,
     return new_plate_offset, new_root_offset
 
 
-def update_image_labels(csv_path, image_name, plate_to_genotype, condition):
+def update_image_labels(csv_path, image_name, plate_to_genotype, plate_to_condition):
     """Rewrite Genotype/Condition in raw_data.csv for rows matching image_name.
 
     plate_to_genotype: dict mapping global Plate number -> genotype string.
-        Plates not in the dict are left unchanged.
-    condition: string applied to all rows for this image.
+    plate_to_condition: dict mapping global Plate number -> condition string.
+        Plates not in either dict are left unchanged.
 
     Used by the "Update Labels" feature to relabel a finished image without
     retracing.
@@ -364,8 +364,10 @@ def update_image_labels(csv_path, image_name, plate_to_genotype, condition):
         for plate_num, geno in plate_to_genotype.items():
             sub = mask & (df['Plate'] == plate_num)
             df.loc[sub, 'Genotype'] = geno
-    if 'Condition' in df.columns:
-        df.loc[mask, 'Condition'] = condition
+    if plate_to_condition and 'Plate' in df.columns and 'Condition' in df.columns:
+        for plate_num, cond in plate_to_condition.items():
+            sub = mask & (df['Plate'] == plate_num)
+            df.loc[sub, 'Condition'] = cond
     tmp = csv_path.with_suffix('.tmp')
     df.to_csv(tmp, index=False)
     tmp.replace(csv_path)

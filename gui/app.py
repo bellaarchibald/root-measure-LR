@@ -1353,6 +1353,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
 
         per_box = self.sidebar.get_genotypes_per_box()
         cond = self.sidebar.entry_condition.get().strip()
+        conditions = [c.strip() for c in cond.split(",")
+                      if c.strip()] if cond else []
 
         # Map CSV's global Plate numbers (for this image) to genotypes by order.
         # Non-split: one genotype per plate, mapped in plate-number order.
@@ -1372,14 +1374,19 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
             return
 
         plate_to_geno = {}
+        plate_to_cond = {}
         for i, plate_num in enumerate(plates_in_img):
             if i < len(per_box) and per_box[i]:
                 plate_to_geno[plate_num] = per_box[i]
             elif per_box:
                 plate_to_geno[plate_num] = per_box[-1]
+            if i < len(conditions):
+                plate_to_cond[plate_num] = conditions[i]
+            elif conditions:
+                plate_to_cond[plate_num] = conditions[-1]
 
         try:
-            n = update_image_labels(csv_path, img_name, plate_to_geno, cond)
+            n = update_image_labels(csv_path, img_name, plate_to_geno, plate_to_cond)
         except Exception as e:
             self.sidebar.set_status(f"Update failed: {e}")
             return
