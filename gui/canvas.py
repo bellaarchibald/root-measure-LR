@@ -370,17 +370,20 @@ class ImageCanvas(ctk.CTkFrame):
             self._redraw()
 
     def _edit_trace_deformed(self):
-        """Current deformed path: original points plus each point's
-        interpolated offset between its neighboring handles."""
+        """Current path: straight-line (shortest-distance) interpolation
+        directly between each handle's current position. Dragging a handle
+        tautens the path to it instead of carrying forward whatever noise
+        the original trace had between handles."""
         path = self._edit_trace_path
         idx = self._edit_trace_handle_idx
         deltas = self._edit_trace_deltas
         if path is None or len(idx) < 2:
             return path
+        handle_pos = path[idx] + deltas
         xs = np.arange(len(path))
-        d_row = np.interp(xs, idx, deltas[:, 0])
-        d_col = np.interp(xs, idx, deltas[:, 1])
-        return path + np.column_stack([d_row, d_col])
+        row = np.interp(xs, idx, handle_pos[:, 0])
+        col = np.interp(xs, idx, handle_pos[:, 1])
+        return np.column_stack([row, col])
 
     def get_edit_trace_path(self):
         """Return the current (possibly edited) path, or None if not editing."""
