@@ -483,14 +483,21 @@ class MeasurementMixin:
             self._start_count_lr()
 
     def _start_targeted_lr_recount(self, ri_list):
-        """Re-enter lateral-root counting for exactly these roots, skipping
-        the plate picker and every already-finished root."""
+        """Re-enter lateral-root counting, skipping the plate picker, but
+        keep every root that was ever part of this image's LR count
+        reachable via Next/Previous Root (not just the ones that need a
+        fresh recount) — just start right at the first one that does."""
         _log(f"_start_targeted_lr_recount() for roots {ri_list}")
         self._hide_action_buttons()
         self.sidebar.set_step(4)
         self._lr_skeletons = {}
-        self._lr_root_indices = list(ri_list)
-        self._lr_idx = 0
+        counted_before = set(self.canvas._lr_results.keys())
+        all_indices = sorted(
+            ri for ri in set(ri_list) | counted_before
+            if ri < len(self._results) and self._results[ri]['path'].size > 0)
+        self._lr_root_indices = all_indices
+        self._lr_idx = (all_indices.index(ri_list[0])
+                        if ri_list and ri_list[0] in all_indices else 0)
 
         def on_ready():
             # debounce Enter, same as _resume_start_count_lr — a leftover
