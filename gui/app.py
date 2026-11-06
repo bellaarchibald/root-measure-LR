@@ -1802,7 +1802,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         # show/hide Prev Plate button
         if can_go_back:
             back_text = "← Previous Genotype" if (self._split and self._split_stage > 0) else "← Previous Plate"
-            self.sidebar.btn_prev_plate.configure(text=back_text)
+            self.sidebar.btn_prev_plate.configure(
+                text=back_text, command=lambda: self._go_back_plate())
             if not self.sidebar.btn_prev_plate.winfo_ismapped():
                 self.sidebar.btn_prev_plate.pack(pady=(3, 0), padx=15, fill="x")
         else:
@@ -1876,7 +1877,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         self.sidebar.btn_done.configure(text="Start Trace")
         if not self.sidebar.btn_done.winfo_ismapped():
             self.sidebar.btn_done.pack(pady=(5, 0), padx=15, fill="x")
-        self.sidebar.btn_prev_plate.configure(text=back_label)
+        self.sidebar.btn_prev_plate.configure(
+            text=back_label, command=lambda: self._go_back_from_ready())
         if not self.sidebar.btn_prev_plate.winfo_ismapped():
             self.sidebar.btn_prev_plate.pack(pady=(3, 0), padx=15, fill="x")
         # set canvas done callback to actually start tracing
