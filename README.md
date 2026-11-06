@@ -33,8 +33,11 @@ powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/bel
 ```
 
 After installation:
-- **macOS** — launch *Root Measure* from Applications or Launchpad
-- **Windows** — use the *Root Measure* shortcut on your Desktop
+- **macOS** — launch *Root Measure LR* from Applications or Launchpad
+- **Windows** — use the *Root Measure LR* shortcut on your Desktop
+
+Note: if the original *Root Measure* (without LR) is also installed, make
+sure you open *Root Measure LR* specifically — they're separate apps.
 
 ## Workflow
 

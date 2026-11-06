@@ -1,5 +1,5 @@
-Root Measure - Installation Instructions
-========================================
+Root Measure LR - Installation Instructions
+============================================
 
 Requires macOS (Apple Silicon or Intel) or Windows 10+.
 The installer will set up Python 3.12, dependencies, and the app automatically.
@@ -9,14 +9,17 @@ Open the Terminal (Mac) or PowerShell (Windows) and paste the command below.
 
 Mac
 ---
-sudo curl -sL https://raw.githubusercontent.com/williangviana/root-measure/stable/install/install.sh | bash
+sudo curl -sL https://raw.githubusercontent.com/bellaarchibald/root-measure-LR/stable/install/install.sh | bash
 
 
 Windows
 -------
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/williangviana/root-measure/stable/install/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/bellaarchibald/root-measure-LR/stable/install/install.ps1 | iex"
 
 
 After installation:
-  Mac     - Open "Root Measure" from Applications or Launchpad.
-  Windows - Use the "Root Measure" shortcut on your Desktop.
+  Mac     - Open "Root Measure LR" from Applications or Launchpad.
+  Windows - Use the "Root Measure LR" shortcut on your Desktop.
+
+Note: if the original "Root Measure" (without LR) is also installed,
+make sure you open "Root Measure LR" specifically - they're separate apps.
