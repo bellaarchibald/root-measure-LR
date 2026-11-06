@@ -3,11 +3,25 @@
 import cv2
 import numpy as np
 import threading
+import subprocess
 import customtkinter as ctk
 from datetime import datetime
 
 import os as _os
 import sys as _sys
+
+
+def _reveal_in_file_manager(path):
+    """Open a folder in Finder/Explorer. Fails silently if unsupported."""
+    try:
+        if _sys.platform == 'darwin':
+            subprocess.Popen(['open', str(path)])
+        elif _sys.platform == 'win32':
+            _os.startfile(str(path))
+        else:
+            subprocess.Popen(['xdg-open', str(path)])
+    except Exception:
+        pass
 
 def _log(msg):
     """Print debug message with timestamp. On Windows cx_Freeze, also log to file."""
@@ -1618,6 +1632,7 @@ class MeasurementMixin:
             self.sidebar.set_status(
                 self.sidebar.lbl_status.cget("text") +
                 f"\nSaved tidy_data.csv, plot, and statistics.txt")
+            _reveal_in_file_manager(data_dir(folder, exp))
         except Exception as e:
             self.sidebar.set_status(
                 self.sidebar.lbl_status.cget("text") +
