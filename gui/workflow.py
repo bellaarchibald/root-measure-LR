@@ -468,8 +468,9 @@ class MeasurementMixin:
         already fully measured (incl. lateral root counting) before this
         review visit, jump straight to re-counting just the roots whose
         primary path changed — otherwise run the normal first-time flow."""
-        recount = [ri for ri in getattr(self, '_roots_needing_lr_recount', [])
-                   if ri < len(self._results) and self._results[ri]['path'].size > 0]
+        recount = sorted(
+            ri for ri in getattr(self, '_roots_needing_lr_recount', [])
+            if ri < len(self._results) and self._results[ri]['path'].size > 0)
         was_done = getattr(self, '_was_measurement_done', False)
         if recount and was_done:
             self._roots_needing_lr_recount = []
