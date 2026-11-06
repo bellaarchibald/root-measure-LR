@@ -81,6 +81,24 @@ def _lr_path_key(path):
     bot = np.round(path[-1]).astype(int)
     return (int(len(path)), int(top[0]), int(top[1]), int(bot[0]), int(bot[1]))
 
+
+def _compute_path_metrics(path, length_px, scale_val):
+    """Vector length (cm), tortuosity, and direction for a path — same
+    convention as the initial auto trace (measure())."""
+    if path.size >= 4 and length_px > 0:
+        vec = np.sqrt(float((path[-1, 0] - path[0, 0]) ** 2 +
+                            (path[-1, 1] - path[0, 1]) ** 2))
+        vector_length_cm = vec / scale_val if scale_val else 0
+        tortuosity = length_px / vec if vec > 0 else None
+        dx = float(path[-1, 1] - path[0, 1])
+        dy = -float(path[-1, 0] - path[0, 0])  # negate: image y is inverted
+        direction = round(np.degrees(np.arctan2(dy, dx)) % 360, 1)
+    else:
+        vector_length_cm = None
+        tortuosity = None
+        direction = None
+    return vector_length_cm, tortuosity, direction
+
 # genotype color shades: [bright, pastel] for trace segments (30 entries)
 # First 8 are Okabe-Ito (colorblind-friendly), then extended hues
 GROUP_COLORS = [
@@ -945,6 +963,8 @@ class MeasurementMixin:
             res = trace_root(plate_binary, top_manual, bot_manual,
                              self._scale_val, plate_bounds=pb, plate_graph=pg)
             _log(f"    traced: {res['length_cm']:.2f} cm, method={res['method']}")
+            res['vector_length_cm'], res['tortuosity'], res['direction'] = (
+                _compute_path_metrics(res['path'], res['length_px'], self._scale_val))
             # use reclick marks if provided (clicks between top and bottom)
             if cpr > 2:
                 mark_coords = list(clicks[1:-1])
@@ -1075,10 +1095,14 @@ class MeasurementMixin:
         if mark_coords and path.size > 0:
             segments = _compute_segments(path, mark_coords, self._scale_val)
 
+        vector_length_cm, tortuosity, direction = _compute_path_metrics(
+            path, length_px, self._scale_val)
         res = dict(
             length_cm=length_cm, length_px=length_px,
             path=path, method='manual', warning=None,
-            segments=segments, mark_coords=mark_coords)
+            segments=segments, mark_coords=mark_coords,
+            vector_length_cm=vector_length_cm, tortuosity=tortuosity,
+            direction=direction)
         self._results[ri] = res
         # path changed — old lateral root points no longer align, clear them
         self._mark_lr_stale(ri)
@@ -1177,10 +1201,14 @@ class MeasurementMixin:
         if mark_coords and path.size > 0:
             segments = _compute_segments(path, mark_coords, self._scale_val)
 
+        vector_length_cm, tortuosity, direction = _compute_path_metrics(
+            path, length_px, self._scale_val)
         res = dict(
             length_cm=length_cm, length_px=length_px,
             path=path, method='edited', warning=None,
-            segments=segments, mark_coords=mark_coords)
+            segments=segments, mark_coords=mark_coords,
+            vector_length_cm=vector_length_cm, tortuosity=tortuosity,
+            direction=direction)
         self._results[ri] = res
         self._mark_lr_stale(ri)
         self._canvas_dirty = True  # edited trace changed results
