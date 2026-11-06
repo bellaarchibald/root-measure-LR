@@ -649,6 +649,13 @@ class Sidebar(ctk.CTkScrollableFrame):
                 self._trace_mode_var.get()))
         # starts hidden
 
+        # Edit Points button (hidden by default, shown in review when exactly
+        # one trace is selected — drag a few points instead of full retrace)
+        self.btn_edit_points = ctk.CTkButton(
+            self._status_frame, text="Edit Points", fg_color="#4f8a6b",
+            command=lambda: app._start_edit_trace())
+        # starts hidden
+
         # Trace mode checkboxes (radio-button behavior, freehand default)
         self._trace_mode_var = ctk.StringVar(value='freehand')
         self._trace_mode_frame = ctk.CTkFrame(

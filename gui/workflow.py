@@ -393,39 +393,96 @@ class MeasurementMixin:
             self._finish_measurement()
             return
         self._lr_skeletons = {}  # per-plate cache — skeletonizing is expensive
-        # ensure binary masks exist (may be missing after session restore)
-        if not getattr(self, '_plate_binaries', None):
-            self.sidebar.set_status("Preprocessing...")
-            all_thresh = self.sidebar.get_all_thresholds(force_value=True)
-            plates_tmp = self.canvas.get_plates()
 
-            def work():
-                binaries = {}
-                for pi_tmp in range(len(plates_tmp)):
-                    thresh = all_thresh.get(pi_tmp, all_thresh.get(0))
-                    binaries[pi_tmp] = preprocess(
-                        self.image, scale=self._scale_val,
-                        sensitivity=self._sensitivity, threshold=thresh)
-                return binaries
+        def on_ready():
+            self._lr_ready = False
+            self.after(500, self._enable_lr_ready)
+            self.after(2000, self._enable_lr_ready)
+            self._enter_lr_root()
 
-            def done(binaries):
-                self._plate_binaries = binaries
-                self._binary = self._plate_binaries.get(0)
-                self._lr_ready = False
-                self.after(500, self._enable_lr_ready)
-                self.after(2000, self._enable_lr_ready)
-                self._enter_lr_root()
+        self._ensure_plate_binaries(on_ready)
 
-            self._run_in_background(work, done)
+    def _ensure_plate_binaries(self, on_ready):
+        """Make sure self._plate_binaries exists (computing it in the
+        background first if needed, e.g. missing after session restore),
+        then call on_ready()."""
+        if getattr(self, '_plate_binaries', None):
+            self._binary = self._plate_binaries.get(0)
+            on_ready()
             return
-        self._binary = self._plate_binaries.get(0)
-        self._lr_ready = False
-        self.after(500, self._enable_lr_ready)
-        self.after(2000, self._enable_lr_ready)
-        self._enter_lr_root()
+        self.sidebar.set_status("Preprocessing...")
+        all_thresh = self.sidebar.get_all_thresholds(force_value=True)
+        plates_tmp = self.canvas.get_plates()
+
+        def work():
+            binaries = {}
+            for pi_tmp in range(len(plates_tmp)):
+                thresh = all_thresh.get(pi_tmp, all_thresh.get(0))
+                binaries[pi_tmp] = preprocess(
+                    self.image, scale=self._scale_val,
+                    sensitivity=self._sensitivity, threshold=thresh)
+            return binaries
+
+        def done(binaries):
+            self._plate_binaries = binaries
+            self._binary = self._plate_binaries.get(0)
+            on_ready()
+
+        self._run_in_background(work, done)
 
     def _enable_lr_ready(self):
         self._lr_ready = True
+
+    def _mark_lr_stale(self, ri):
+        """Clear a root's cached lateral-root data after its primary path
+        changed (retrace/manual trace/edit), and remember it so the next
+        LR-counting pass can jump straight back to just this root instead
+        of restarting the whole walkthrough."""
+        had_lr = self.canvas._lr_results.pop(ri, None) is not None
+        if had_lr:
+            recount = getattr(self, '_roots_needing_lr_recount', [])
+            if ri not in recount:
+                recount.append(ri)
+            self._roots_needing_lr_recount = recount
+
+    def _resume_after_review(self):
+        """After Accept All with nothing left to retry. If this image was
+        already fully measured (incl. lateral root counting) before this
+        review visit, jump straight to re-counting just the roots whose
+        primary path changed — otherwise run the normal first-time flow."""
+        recount = [ri for ri in getattr(self, '_roots_needing_lr_recount', [])
+                   if ri < len(self._results) and self._results[ri]['path'].size > 0]
+        was_done = getattr(self, '_was_measurement_done', False)
+        if recount and was_done:
+            self._roots_needing_lr_recount = []
+            self._start_targeted_lr_recount(recount)
+        elif was_done:
+            # nothing needs recounting — no new LR work, just return to the
+            # finished view instead of re-asking which plates to count
+            self._finish_measurement()
+        else:
+            self._start_count_lr()
+
+    def _start_targeted_lr_recount(self, ri_list):
+        """Re-enter lateral-root counting for exactly these roots, skipping
+        the plate picker and every already-finished root."""
+        _log(f"_start_targeted_lr_recount() for roots {ri_list}")
+        self._hide_action_buttons()
+        self.sidebar.set_step(4)
+        self._lr_skeletons = {}
+        self._lr_root_indices = list(ri_list)
+        self._lr_idx = 0
+
+        def on_ready():
+            # debounce Enter, same as _resume_start_count_lr — a leftover
+            # keypress from accepting review shouldn't instantly confirm
+            # the first recounted root
+            self._lr_ready = False
+            self.after(500, self._enable_lr_ready)
+            self.after(2000, self._enable_lr_ready)
+            self._enter_lr_root()
+
+        self._ensure_plate_binaries(on_ready)
 
     def _enter_lr_root(self):
         """Zoom to and seed lateral-root review for the current root."""
@@ -676,11 +733,17 @@ class MeasurementMixin:
             if not self.sidebar.btn_manual_trace.winfo_ismapped():
                 self.sidebar.btn_manual_trace.pack(pady=(3, 0), padx=15, fill="x")
             self.sidebar.show_manual_trace_modes()
+            if n == 1:
+                if not self.sidebar.btn_edit_points.winfo_ismapped():
+                    self.sidebar.btn_edit_points.pack(pady=(3, 0), padx=15, fill="x")
+            else:
+                self.sidebar.btn_edit_points.pack_forget()
         else:
             self.sidebar.btn_done.configure(
                 text="Accept All", fg_color="#2b5797")
             self.sidebar.btn_manual_trace.pack_forget()
             self.sidebar.hide_manual_trace_modes()
+            self.sidebar.btn_edit_points.pack_forget()
 
     def _review_done(self):
         """Called when user presses Enter or Accept All button in review mode."""
@@ -697,7 +760,7 @@ class MeasurementMixin:
             # accept all — count lateral roots, then save and finish
             _log("  no selection -> counting lateral roots")
             self.canvas.set_mode(ImageCanvas.MODE_VIEW)
-            self._start_count_lr()
+            self._resume_after_review()
             return
         # map trace indices to result indices
         self._retry_result_indices = [self._trace_to_result[s]
@@ -707,7 +770,7 @@ class MeasurementMixin:
         if not self._retry_result_indices:
             _log("  no valid indices -> counting lateral roots")
             self.canvas.set_mode(ImageCanvas.MODE_VIEW)
-            self._start_count_lr()
+            self._resume_after_review()
             return
         # enter reclick mode
         _log("  -> entering reclick mode")
@@ -896,7 +959,7 @@ class MeasurementMixin:
                 res['segments'] = []
             self._results[ri] = res
             # path changed — old lateral root points no longer align, clear them
-            self.canvas._lr_results.pop(ri, None)
+            self._mark_lr_stale(ri)
         self._canvas_dirty = True  # retrace changed results — Next Image saves
 
         self._rebuild_all_traces()
@@ -1018,7 +1081,7 @@ class MeasurementMixin:
             segments=segments, mark_coords=mark_coords)
         self._results[ri] = res
         # path changed — old lateral root points no longer align, clear them
-        self.canvas._lr_results.pop(ri, None)
+        self._mark_lr_stale(ri)
         self._canvas_dirty = True  # manual trace changed results
 
         self._manual_trace_idx += 1
@@ -1047,6 +1110,83 @@ class MeasurementMixin:
                 f"Manual trace root {pi_idx}/{n}: {n_pts} point(s).\n"
                 f"Click more points along the root.\n"
                 f"Enter=confirm, Right-click=undo.")
+
+    # --- Edit-trace flow (drag a few points to reshape an existing path) ---
+
+    def _start_edit_trace(self):
+        """Enter edit-trace mode for the single selected bad trace."""
+        selected = self.canvas.get_selected_for_retry()
+        indices = [self._trace_to_result[s] for s in selected
+                   if s < len(self._trace_to_result)]
+        if len(indices) != 1:
+            self.sidebar.set_status("Select exactly one root to edit its points.")
+            return
+        ri = indices[0]
+        path = self._results[ri]['path']
+        if path.size == 0:
+            self.sidebar.set_status("That root has no path to edit.")
+            return
+        self._edit_trace_result_idx = ri
+        self._hide_action_buttons()
+        self._show_action_frame()
+        self.canvas.set_mode(ImageCanvas.MODE_EDIT_TRACE,
+                             on_done=self._finish_edit_trace)
+        self.canvas.set_edit_trace(path)
+
+        # zoom tight on the path, same framing as lateral-root counting
+        side_pad = int(1.5 * self._scale_val) if self._scale_val else 150
+        r1 = int(path[:, 0].min()) - 20
+        r2 = int(path[:, 0].max()) + 20
+        c1 = int(path[:, 1].min()) - side_pad
+        c2 = int(path[:, 1].max()) + side_pad
+        self.canvas.zoom_to_region(r1, r2, c1, c2)
+
+        self.sidebar.btn_done.configure(
+            text="Finish Editing", command=lambda: self.canvas._trigger_done())
+        self.sidebar.btn_done.pack(pady=(5, 0), padx=15, fill="x")
+        self.sidebar.btn_prev_plate.configure(
+            text="Cancel Editing", command=self._cancel_edit_trace)
+        self.sidebar.btn_prev_plate.pack(pady=(3, 0), padx=15, fill="x")
+        self.sidebar.set_status(
+            "Drag a point to reshape the root (top/tip stay fixed).\n"
+            "Right-click = reset all points. Enter = confirm.")
+        self.lbl_bottom.configure(
+            text="Drag=reshape  |  Right-click=reset all  |  "
+                 "Enter=confirm  |  Scroll=zoom")
+
+    def _cancel_edit_trace(self):
+        """Discard edits and return to review without changing the path."""
+        self.canvas.clear_edit_trace()
+        self._show_review(skip_delay=True)
+
+    def _finish_edit_trace(self):
+        """Commit the edited path as this root's new primary trace."""
+        ri = self._edit_trace_result_idx
+        path = self.canvas.get_edit_trace_path()
+        self.canvas.clear_edit_trace()
+        if path is None or len(path) < 2:
+            self._show_review(skip_delay=True)
+            return
+
+        diffs = np.diff(path, axis=0)
+        length_px = float(np.sum(np.sqrt((diffs ** 2).sum(axis=1))))
+        length_cm = length_px / self._scale_val if self._scale_val else 0
+
+        mark_coords = self.canvas._all_marks.get(ri, [])
+        segments = []
+        if mark_coords and path.size > 0:
+            segments = _compute_segments(path, mark_coords, self._scale_val)
+
+        res = dict(
+            length_cm=length_cm, length_px=length_px,
+            path=path, method='edited', warning=None,
+            segments=segments, mark_coords=mark_coords)
+        self._results[ri] = res
+        self._mark_lr_stale(ri)
+        self._canvas_dirty = True  # edited trace changed results
+
+        self._rebuild_all_traces()
+        self._show_review(skip_delay=True)
 
     def _save_trace_screenshot(self, silent=False):
         """Save plate image with traced root overlays (no UI elements)."""
@@ -1306,6 +1446,11 @@ class MeasurementMixin:
             else:
                 self.sidebar.set_status("No traces to review.")
                 return
+        # remember whether this image was already fully done (incl. lateral
+        # root counting) so accepting review again can jump straight back to
+        # re-counting just whatever gets retraced, instead of restarting
+        self._was_measurement_done = self.canvas._measurement_done
+        self._roots_needing_lr_recount = []
         self.canvas._measurement_done = False
         self.canvas.clear_review()
         self._hide_action_buttons()

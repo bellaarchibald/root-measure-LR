@@ -435,6 +435,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                     self._retry_result_indices = []
                     self.canvas._retry_result_indices_ref = self._retry_result_indices
                     self._reclick_idx = 0
+                    self._was_measurement_done = False
+                    self._roots_needing_lr_recount = []
                     # restore manual endpoints click state
                     self.canvas._click_seq_pos = cs.get('click_seq_pos', 0)
                     manual = self.sidebar.is_manual_endpoints()
@@ -459,6 +461,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                     self._retry_result_indices = []
                     self.canvas._retry_result_indices_ref = self._retry_result_indices
                     self._reclick_idx = 0
+                    self._was_measurement_done = False
+                    self._roots_needing_lr_recount = []
                     # rebuild workflow state so review/retrace/manual-trace work
                     self._rebuild_results_from_traces()
                     self.sidebar.set_step(5)
@@ -488,6 +492,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
                     self._trace_to_result = []
                     self._retry_result_indices = []
                     self._reclick_idx = 0
+                    self._was_measurement_done = False
+                    self._roots_needing_lr_recount = []
                     self.sidebar.set_status(
                         f"Session restored: {len(plates)} plate(s), "
                         f"{len(points)} root(s).\n"
@@ -706,6 +712,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         self._plate_binaries = {}
         self._retry_result_indices = []
         self._reclick_idx = 0
+        self._was_measurement_done = False
+        self._roots_needing_lr_recount = []
         try:
             ext = path.suffix.lower()
             if ext in ('.tif', '.tiff'):
@@ -837,6 +845,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         self._plate_binaries = {}
         self._retry_result_indices = []
         self._reclick_idx = 0
+        self._was_measurement_done = False
+        self._roots_needing_lr_recount = []
         if self.canvas._traces and not getattr(self, '_results', None):
             self._rebuild_results_from_traces()
         self.sidebar.sec_sessions.hide()
@@ -1084,6 +1094,7 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         self.sidebar.btn_done.pack_forget()
         self.sidebar.btn_prev_plate.pack_forget()
         self.sidebar.btn_manual_trace.pack_forget()
+        self.sidebar.btn_edit_points.pack_forget()
         self.sidebar.hide_manual_trace_modes()
         self.sidebar.hide_review_toggles()
 
@@ -1547,6 +1558,8 @@ class RootMeasureApp(MeasurementMixin, ctk.CTk):
         self.sidebar.btn_select_plates.configure(fg_color="#2b5797")
         self._retry_result_indices = []
         self._reclick_idx = 0
+        self._was_measurement_done = False
+        self._roots_needing_lr_recount = []
         self._current_plate_idx = 0
         self._split_stage = 0
         # Clear callbacks before setting new ones
