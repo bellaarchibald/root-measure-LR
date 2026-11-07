@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import threading
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import customtkinter as ctk
 from datetime import datetime
 
@@ -411,11 +412,13 @@ class MeasurementMixin:
             self._finish_measurement()
             return
         self._lr_skeletons = {}  # per-plate cache — skeletonizing is expensive
+        self._lr_skeleton_pending = set()
 
         def on_ready():
             self._lr_ready = False
             self.after(500, self._enable_lr_ready)
             self.after(2000, self._enable_lr_ready)
+            self._prefetch_lr_skeletons()
             self._enter_lr_root()
 
         self._ensure_plate_binaries(on_ready)
@@ -433,13 +436,18 @@ class MeasurementMixin:
         plates_tmp = self.canvas.get_plates()
 
         def work():
-            binaries = {}
-            for pi_tmp in range(len(plates_tmp)):
-                thresh = all_thresh.get(pi_tmp, all_thresh.get(0))
-                binaries[pi_tmp] = preprocess(
-                    self.image, scale=self._scale_val,
-                    sensitivity=self._sensitivity, threshold=thresh)
-            return binaries
+            # preprocess() is cv2/numpy-heavy and releases the GIL, so
+            # running all plates' thresholds in parallel threads actually
+            # overlaps the work instead of just hiding it off the main thread.
+            with ThreadPoolExecutor(max_workers=max(1, len(plates_tmp))) as pool:
+                futures = {
+                    pi_tmp: pool.submit(
+                        preprocess, self.image, scale=self._scale_val,
+                        sensitivity=self._sensitivity,
+                        threshold=all_thresh.get(pi_tmp, all_thresh.get(0)))
+                    for pi_tmp in range(len(plates_tmp))
+                }
+                return {pi_tmp: f.result() for pi_tmp, f in futures.items()}
 
         def done(binaries):
             self._plate_binaries = binaries
@@ -491,6 +499,7 @@ class MeasurementMixin:
         self._hide_action_buttons()
         self.sidebar.set_step(4)
         self._lr_skeletons = {}
+        self._lr_skeleton_pending = set()
         counted_before = set(self.canvas._lr_results.keys())
         all_indices = sorted(
             ri for ri in set(ri_list) | counted_before
@@ -505,9 +514,51 @@ class MeasurementMixin:
             self._lr_ready = False
             self.after(500, self._enable_lr_ready)
             self.after(2000, self._enable_lr_ready)
+            self._prefetch_lr_skeletons()
             self._enter_lr_root()
 
         self._ensure_plate_binaries(on_ready)
+
+    def _prefetch_lr_skeletons(self):
+        """Skeletonize every plate that has lateral-root roots queued, all
+        in parallel in the background, so moving to the next plate during
+        LR counting doesn't pause to skeletonize it — it's usually already
+        done by the time the user gets there."""
+        root_plates = self.canvas._root_plates
+        plate_indices = sorted(set(
+            root_plates[ri] if ri < len(root_plates) else 0
+            for ri in self._lr_root_indices))
+        pending = {pi: self._plate_binaries[pi] for pi in plate_indices
+                   if pi not in self._lr_skeletons
+                   and pi not in self._lr_skeleton_pending}
+        if not pending:
+            return
+        self._lr_skeleton_pending.update(pending.keys())
+
+        def work():
+            with ThreadPoolExecutor(max_workers=len(pending)) as pool:
+                futures = {pi: pool.submit(skeletonize, binary)
+                           for pi, binary in pending.items()}
+                return {pi: f.result() for pi, f in futures.items()}
+
+        def done(results):
+            self._lr_skeletons.update(results)
+            self._lr_skeleton_pending.difference_update(results.keys())
+
+        self._run_in_background(work, done)
+
+    def _wait_for_lr_skeleton(self, ri, path, pi, plate_bounds):
+        """Poll until a prefetched skeleton for plate pi finishes, then
+        continue entering this root — avoids starting a duplicate
+        skeletonize() call for a plate already being prefetched."""
+        if pi not in self._lr_skeletons:
+            self.after(50, lambda: self._wait_for_lr_skeleton(ri, path, pi, plate_bounds))
+            return
+        plate_binary = self._plate_binaries.get(pi, self._binary)
+        auto_points, lr_error = self._detect_lateral_roots_safe(
+            plate_binary, path, self._lr_skeletons[pi], ri)
+        self._lr_ready = True
+        self._finish_enter_lr_root(ri, path, pi, plate_bounds, auto_points, [], lr_error)
 
     def _enter_lr_root(self):
         """Zoom to and seed lateral-root review for the current root."""
@@ -542,15 +593,22 @@ class MeasurementMixin:
             self._finish_enter_lr_root(ri, path, pi, plate_bounds, auto_points, [], lr_error)
             return
 
+        self._hide_action_buttons()
+        self._lr_ready = False
+        self.sidebar.set_status(f"Preparing lateral root detection for plate {pi + 1}...")
+
+        if pi in getattr(self, '_lr_skeleton_pending', ()):
+            # already being skeletonized by _prefetch_lr_skeletons — wait for
+            # it instead of starting a duplicate skeletonize() call
+            self._wait_for_lr_skeleton(ri, path, pi, plate_bounds)
+            return
+
         # skeletonizing a full-plate binary mask is expensive — run it off
         # the main thread so the UI doesn't freeze. Hide the Next/Previous
         # Root buttons and block Enter meanwhile so a click/keypress can't
         # fire against the stale (previous root's) handler while this is
         # in flight — that would misfile this root's points under the wrong
         # index once _lr_idx has already advanced.
-        self._hide_action_buttons()
-        self._lr_ready = False
-        self.sidebar.set_status(f"Preparing lateral root detection for plate {pi + 1}...")
 
         def work():
             return skeletonize(plate_binary)
